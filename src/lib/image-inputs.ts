@@ -3,20 +3,20 @@ import type { ImageInputConfig } from "./types";
 export const IMAGE_INPUTS: readonly ImageInputConfig[] = [
     {
         target: "init_image",
-        label: "Init Image",
-        description: "Drop, paste, or browse an image to seed generation.",
+        label: "初始图像",
+        description: "拖拽、粘贴或浏览图像作为生成种子。",
         layout: "grid",
     },
     {
         target: "mask_image",
-        label: "Mask Image",
-        description: "One-channel mask image.",
+        label: "蒙版图像",
+        description: "单通道蒙版图像。",
         layout: "grid",
     },
     {
         target: "control_image",
-        label: "Control Image",
-        description: "ControlNet-style guidance image.",
+        label: "控制图像",
+        description: "ControlNet 风格引导图像。",
         layout: "full",
     },
 ];
@@ -24,14 +24,14 @@ export const IMAGE_INPUTS: readonly ImageInputConfig[] = [
 export const VIDEO_IMAGE_INPUTS: readonly ImageInputConfig[] = [
     {
         target: "init_image",
-        label: "Start Frame",
-        description: "Optional first frame or seed image for the sequence.",
+        label: "起始帧",
+        description: "可选的第一帧或序列种子图像。",
         layout: "grid",
     },
     {
         target: "end_image",
-        label: "End Frame",
-        description: "Optional end frame for interpolation or FLF2V-style runs.",
+        label: "结束帧",
+        description: "用于插值或 FLF2V 风格运行的可选结束帧。",
         layout: "grid",
     },
 ];

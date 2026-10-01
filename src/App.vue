@@ -312,11 +312,11 @@ function toggleSection(section: string): void {
 
 function selectGenerationMode(mode: GenerationMode): void {
     if (mode === "image" && !supportsImageMode.value) {
-        setMessage("Current model only supports video generation.", "error");
+        setMessage("当前模型仅支持视频生成。", "error");
         return;
     }
     if (mode === "video" && !supportsVideoMode.value) {
-        setMessage("Current model only supports image generation.", "error");
+        setMessage("当前模型仅支持图像生成。", "error");
         return;
     }
     selectedGenerationTab.value = mode;
@@ -358,15 +358,15 @@ async function pollJob(id: string): Promise<void> {
         }
         stopElapsedTimer();
         if (currentStatus.value === "completed") {
-            setMessage(currentJob.value?.kind === "vid_gen" ? "Video generation completed." : "Image generation completed.", "success");
+            setMessage(currentJob.value?.kind === "vid_gen" ? "视频生成完成。" : "图像生成完成。", "success");
             return;
         }
         if (currentStatus.value === "cancelled") {
-            setMessage("Job cancelled.", "error");
+            setMessage("任务已取消。", "error");
             return;
         }
         if (currentStatus.value === "failed") {
-            setMessage(currentJob.value?.error?.message || "Generation failed.", "error");
+            setMessage(currentJob.value?.error?.message || "生成失败。", "error");
         }
     } catch (error) {
         stopElapsedTimer();
@@ -399,7 +399,7 @@ async function cancelCurrentJob(): Promise<void> {
         currentJob.value = await cancelJob(baseUrl.value, currentJob.value.id);
         stopPolling();
         stopElapsedTimer();
-        setMessage("Job cancelled.", "error");
+        setMessage("任务已取消。", "error");
     } catch (error) {
         setMessage(error instanceof Error ? error.message : String(error), "error");
     }
@@ -448,23 +448,23 @@ function selectOutput(index: number): void {
 
 function formatUnixTime(seconds: number | undefined): string {
     if (!seconds) {
-        return "No job";
+        return "无任务";
     }
     return new Date(seconds * 1000).toLocaleString();
 }
 
 function formatElapsed(started: number | undefined, completed: number | undefined): string {
     if (!started) {
-        return "Idle";
+        return "空闲";
     }
     const end = completed || nowSeconds.value;
     const total = Math.max(0, end - started);
     if (total < 60) {
-        return `${total.toFixed(1)}s`;
+        return `${total.toFixed(1)}秒`;
     }
     const minutes = Math.floor(total / 60);
     const seconds = total - minutes * 60;
-    return `${minutes}m ${seconds.toFixed(1)}s`;
+    return `${minutes}分 ${seconds.toFixed(1)}秒`;
 }
 
 function formatSummaryNumber(value: number, digits = 3): string {
@@ -507,7 +507,7 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
         return;
     }
     await assignImages("init_image", event.clipboardData.files);
-    setMessage("Pasted image into init_image.", "success");
+    setMessage("已粘贴图像到初始图像。", "success");
 }
 
 watch(generationMode, (mode) => {
@@ -546,7 +546,7 @@ onBeforeUnmount(() => {
                     </div>
                     <h1 class="page-title">{{ modelName }}</h1>
                     <p class="page-description">
-                        Native async image and video generation interface for the local `stable-diffusion.cpp` server.
+                        本地 `stable-diffusion.cpp` 服务器的原生异步图像和视频生成界面。
                     </p>
                 </div>
                 <div class="page-header__meta">
@@ -557,40 +557,40 @@ onBeforeUnmount(() => {
             </div>
             <div class="page-tabs">
                 <div class="page-tabs__list">
-                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'image' }" type="button" @click="selectGenerationMode('image')" :disabled="!supportsImageMode">Image Generation</button>
-                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'video' }" type="button" @click="selectGenerationMode('video')" :disabled="!supportsVideoMode">Video Generation</button>
-                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'settings' }" type="button" @click="activeTab = 'settings'">Settings</button>
+                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'image' }" type="button" @click="selectGenerationMode('image')" :disabled="!supportsImageMode">图像生成</button>
+                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'video' }" type="button" @click="selectGenerationMode('video')" :disabled="!supportsVideoMode">视频生成</button>
+                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'settings' }" type="button" @click="activeTab = 'settings'">设置</button>
                 </div>
                 <div class="page-tabs__actions">
-                    <button class="btn-secondary" type="button" @click="refreshCapabilities" :disabled="loadingCapabilities">{{ loadingCapabilities ? "Refreshing..." : "Refresh Server Info" }}</button>
+                    <button class="btn-secondary" type="button" @click="refreshCapabilities" :disabled="loadingCapabilities">{{ loadingCapabilities ? "刷新中..." : "刷新服务器信息" }}</button>
                 </div>
             </div>
             <div v-if="activeTab === 'settings'" class="settings">
                 <div class="settings__grid">
                     <div class="field">
-                        <label>Base URL</label>
-                        <input v-model="baseUrl" placeholder="Leave blank to use same origin" />
+                        <label>基础 URL</label>
+                        <input v-model="baseUrl" placeholder="留空则使用同源地址" />
                     </div>
                     <div class="field">
-                        <label>Queue Limit</label>
+                        <label>队列限制</label>
                         <input :value="queueLimit" readonly />
                     </div>
                     <div class="field">
-                        <label>Output Formats ({{ generationMode === "video" ? "video" : "image" }})</label>
+                        <label>输出格式 ({{ generationMode === "video" ? "视频" : "图像" }})</label>
                         <input :value="outputFormats.join(', ')" readonly />
                     </div>
                     <div class="field">
-                        <label>Output Format</label>
+                        <label>输出格式</label>
                         <select v-model="form.output_format">
                             <option v-for="format in outputFormats" :key="format" :value="format">{{ format }}</option>
                         </select>
                     </div>
                     <div class="field">
-                        <label>Output Compression</label>
+                        <label>输出压缩质量</label>
                         <input v-model.number="form.output_compression" type="number" min="0" max="100" />
                     </div>
                     <div class="field">
-                        <label>Job Poll Interval (ms)</label>
+                        <label>任务轮询间隔 (毫秒)</label>
                         <input v-model.number="pollIntervalMs" type="number" min="1" step="1" />
                     </div>
                 </div>
@@ -602,129 +602,129 @@ onBeforeUnmount(() => {
             <section class="panel control-panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Input</h2>
+                        <h2 class="panel-title">输入</h2>
                     </div>
                 </div>
 
                 <div class="prompt-card">
                     <div class="field--full">
-                        <label>Prompt</label>
-                        <textarea v-model="form.prompt" :placeholder="generationMode === 'video' ? 'Describe the motion, scene, and framing you want to generate' : 'Describe the image you want to generate'" />
+                        <label>提示词</label>
+                        <textarea v-model="form.prompt" :placeholder="generationMode === 'video' ? '描述您想要生成的动作、场景和构图' : '描述您想要生成的图像'" />
                     </div>
                     <div class="field--full stack-top">
-                        <label>Negative Prompt</label>
-                        <textarea v-model="form.negative_prompt" placeholder="What should be excluded?" />
+                        <label>反向提示词</label>
+                        <textarea v-model="form.negative_prompt" placeholder="不想要的内容?" />
                     </div>
                 </div>
 
                 <div class="fields stack-top">
-                    <div class="field"><label>Width</label><input v-model.number="form.width" type="number" min="64" /></div>
-                    <div class="field"><label>Height</label><input v-model.number="form.height" type="number" min="64" /></div>
+                    <div class="field"><label>宽度</label><input v-model.number="form.width" type="number" min="64" /></div>
+                    <div class="field"><label>高度</label><input v-model.number="form.height" type="number" min="64" /></div>
                 </div>
 
                 <div v-if="generationMode === 'image'" class="fields stack-top">
-                    <div class="field"><label>Batch Count</label><input v-model.number="form.batch_count" type="number" min="1" /></div>
-                    <div class="field"><label>Seed</label><input v-model.number="form.seed" type="number" /></div>
+                    <div class="field"><label>批次数量</label><input v-model.number="form.batch_count" type="number" min="1" /></div>
+                    <div class="field"><label>种子</label><input v-model.number="form.seed" type="number" /></div>
                 </div>
                 <div v-else class="fields stack-top">
-                    <div class="field"><label>Video Frames</label><input v-model.number="form.video_frames" type="number" min="1" /></div>
+                    <div class="field"><label>视频帧数</label><input v-model.number="form.video_frames" type="number" min="1" /></div>
                     <div class="field"><label>FPS</label><input v-model.number="form.fps" type="number" min="1" /></div>
                 </div>
                 <div v-if="generationMode === 'video'" class="field stack-top">
-                    <label>Seed</label>
+                    <label>种子</label>
                     <input v-model.number="form.seed" type="number" />
                 </div>
 
-                <CollapsibleSection class="stack-top" eyebrow="Sample" :summary="sampleSummary" :open="sectionState.sample" variant="module" @toggle="toggleSection('sample')">
+                <CollapsibleSection class="stack-top" eyebrow="采样" :summary="sampleSummary" :open="sectionState.sample" variant="module" @toggle="toggleSection('sample')">
                     <div class="fields">
                         <div class="field">
-                            <label>Scheduler</label>
+                            <label>调度器</label>
                             <select v-model="form.sample_params.scheduler">
-                                <option value="default">default</option>
+                                <option value="default">默认</option>
                                 <option v-for="scheduler in schedulers" :key="scheduler" :value="scheduler">{{ scheduler }}</option>
                             </select>
                         </div>
-                        <div class="field"><label>Flow Shift</label><input v-model="form.sample_params.flow_shift" type="number" step="0.01" placeholder="blank = default" /></div>
+                        <div class="field"><label>Flow Shift</label><input v-model="form.sample_params.flow_shift" type="number" step="0.01" placeholder="留空 = 默认" /></div>
                         <div class="field">
-                            <label>Method</label>
+                            <label>采样方法</label>
                             <select v-model="form.sample_params.sample_method">
-                                <option value="default">default</option>
+                                <option value="default">默认</option>
                                 <option v-for="sampler in samplers" :key="sampler" :value="sampler">{{ sampler }}</option>
                             </select>
                         </div>
-                        <div class="field"><label>Steps</label><input v-model.number="form.sample_params.sample_steps" type="number" /></div>
+                        <div class="field"><label>步数</label><input v-model.number="form.sample_params.sample_steps" type="number" /></div>
                     </div>
                     <div class="sample-panel__extras">
                         <button class="module-card__link" type="button" @click="toggleSection('sampleAdvanced')">
-                            {{ sectionState.sampleAdvanced ? "Hide extras" : "Show extras" }}
+                            {{ sectionState.sampleAdvanced ? "隐藏高级" : "显示高级" }}
                         </button>
                     </div>
                     <div v-if="sectionState.sampleAdvanced" class="fields">
-                        <div class="field"><label>Eta</label><input v-model="form.sample_params.eta" type="number" step="0.01" placeholder="blank = default" /></div>
-                        <div class="field"><label>Shifted Timestep</label><input v-model.number="form.sample_params.shifted_timestep" type="number" /></div>
+                        <div class="field"><label>Eta</label><input v-model="form.sample_params.eta" type="number" step="0.01" placeholder="留空 = 默认" /></div>
+                        <div class="field"><label>时间步偏移</label><input v-model.number="form.sample_params.shifted_timestep" type="number" /></div>
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="Guidance" :summary="guidanceSummary" :open="sectionState.guidance" variant="module" @toggle="toggleSection('guidance')">
+                <CollapsibleSection class="stack-top" eyebrow="引导" :summary="guidanceSummary" :open="sectionState.guidance" variant="module" @toggle="toggleSection('guidance')">
                     <div class="fields">
                         <div class="field"><label>CFG Scale</label><input v-model.number="form.sample_params.guidance.txt_cfg" type="number" step="0.1" /></div>
-                        <div class="field"><label>Distilled Guidance</label><input v-model.number="form.sample_params.guidance.distilled_guidance" type="number" step="0.1" /></div>
+                        <div class="field"><label>蒸馏引导</label><input v-model.number="form.sample_params.guidance.distilled_guidance" type="number" step="0.1" /></div>
                     </div>
                     <div class="sample-panel__extras">
                         <button class="module-card__link" type="button" @click="toggleSection('guidanceAdvanced')">
-                            {{ sectionState.guidanceAdvanced ? "Hide extras" : "Show extras" }}
+                            {{ sectionState.guidanceAdvanced ? "隐藏高级" : "显示高级" }}
                         </button>
                     </div>
                     <div v-if="sectionState.guidanceAdvanced" class="fields">
-                        <div class="field"><label>Image CFG</label><input v-model="form.sample_params.guidance.img_cfg" type="number" step="0.1" placeholder="blank = follow text cfg" /></div>
-                        <div class="field"><label>SLG Layers</label><input v-model="form.sample_params.guidance.slg_layers" placeholder="7,8,9" /></div>
-                        <div class="field"><label>SLG Layer Start</label><input v-model.number="form.sample_params.guidance.layer_start" type="number" step="0.01" /></div>
-                        <div class="field"><label>SLG Layer End</label><input v-model.number="form.sample_params.guidance.layer_end" type="number" step="0.01" /></div>
-                        <div class="field"><label>SLG Scale</label><input v-model.number="form.sample_params.guidance.scale" type="number" step="0.01" /></div>
+                        <div class="field"><label>Image CFG</label><input v-model="form.sample_params.guidance.img_cfg" type="number" step="0.1" placeholder="留空 = 跟随文本 CFG" /></div>
+                        <div class="field"><label>SLG 层</label><input v-model="form.sample_params.guidance.slg_layers" placeholder="7,8,9" /></div>
+                        <div class="field"><label>SLG 层开始</label><input v-model.number="form.sample_params.guidance.layer_start" type="number" step="0.01" /></div>
+                        <div class="field"><label>SLG 层结束</label><input v-model.number="form.sample_params.guidance.layer_end" type="number" step="0.01" /></div>
+                        <div class="field"><label>SLG 缩放</label><input v-model.number="form.sample_params.guidance.scale" type="number" step="0.01" /></div>
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection v-if="generationMode === 'video'" class="stack-top" eyebrow="High Noise Pass" :summary="highNoiseSummary" :open="sectionState.highNoise" variant="module" @toggle="toggleSection('highNoise')">
+                <CollapsibleSection v-if="generationMode === 'video'" class="stack-top" eyebrow="高噪声通过" :summary="highNoiseSummary" :open="sectionState.highNoise" variant="module" @toggle="toggleSection('highNoise')">
                     <div class="field">
-                        <label>MoE Boundary</label>
+                        <label>MoE 边界</label>
                         <input v-model.number="form.moe_boundary" type="number" step="0.001" />
                     </div>
-                    <CollapsibleSection eyebrow="Sample" :summary="buildSampleSummary(form.high_noise_sample_params)" :open="sectionState.highNoiseSample" variant="plain" @toggle="toggleSection('highNoiseSample')">
+                    <CollapsibleSection eyebrow="采样" :summary="buildSampleSummary(form.high_noise_sample_params)" :open="sectionState.highNoiseSample" variant="plain" @toggle="toggleSection('highNoiseSample')">
                         <div class="fields">
                             <div class="field">
-                                <label>Scheduler</label>
+                                <label>调度器</label>
                                 <select v-model="form.high_noise_sample_params.scheduler">
-                                    <option value="default">default</option>
+                                    <option value="default">默认</option>
                                     <option v-for="scheduler in schedulers" :key="`high-noise-${scheduler}`" :value="scheduler">{{ scheduler }}</option>
                                 </select>
                             </div>
-                            <div class="field"><label>Flow Shift</label><input v-model="form.high_noise_sample_params.flow_shift" type="number" step="0.01" placeholder="blank = default" /></div>
+                            <div class="field"><label>Flow Shift</label><input v-model="form.high_noise_sample_params.flow_shift" type="number" step="0.01" placeholder="留空 = 默认" /></div>
                             <div class="field">
-                                <label>Method</label>
+                                <label>采样方法</label>
                                 <select v-model="form.high_noise_sample_params.sample_method">
-                                    <option value="default">default</option>
+                                    <option value="default">默认</option>
                                     <option v-for="sampler in samplers" :key="`high-noise-${sampler}`" :value="sampler">{{ sampler }}</option>
                                 </select>
                             </div>
-                            <div class="field"><label>Steps</label><input v-model.number="form.high_noise_sample_params.sample_steps" type="number" /></div>
-                            <div class="field"><label>Eta</label><input v-model="form.high_noise_sample_params.eta" type="number" step="0.01" placeholder="blank = auto" /></div>
-                            <div class="field"><label>Shifted Timestep</label><input v-model.number="form.high_noise_sample_params.shifted_timestep" type="number" /></div>
+                            <div class="field"><label>步数</label><input v-model.number="form.high_noise_sample_params.sample_steps" type="number" /></div>
+                            <div class="field"><label>Eta</label><input v-model="form.high_noise_sample_params.eta" type="number" step="0.01" placeholder="留空 = 自动" /></div>
+                            <div class="field"><label>时间步偏移</label><input v-model.number="form.high_noise_sample_params.shifted_timestep" type="number" /></div>
                         </div>
                     </CollapsibleSection>
-                    <CollapsibleSection class="stack-top" eyebrow="Guidance" :summary="buildGuidanceSummary(form.high_noise_sample_params)" :open="sectionState.highNoiseGuidance" variant="plain" @toggle="toggleSection('highNoiseGuidance')">
+                    <CollapsibleSection class="stack-top" eyebrow="引导" :summary="buildGuidanceSummary(form.high_noise_sample_params)" :open="sectionState.highNoiseGuidance" variant="plain" @toggle="toggleSection('highNoiseGuidance')">
                         <div class="fields">
                             <div class="field"><label>CFG Scale</label><input v-model.number="form.high_noise_sample_params.guidance.txt_cfg" type="number" step="0.1" /></div>
-                            <div class="field"><label>Distilled Guidance</label><input v-model.number="form.high_noise_sample_params.guidance.distilled_guidance" type="number" step="0.1" /></div>
-                            <div class="field"><label>Image CFG</label><input v-model="form.high_noise_sample_params.guidance.img_cfg" type="number" step="0.1" placeholder="blank = follow text cfg" /></div>
-                            <div class="field"><label>SLG Layers</label><input v-model="form.high_noise_sample_params.guidance.slg_layers" placeholder="7,8,9" /></div>
-                            <div class="field"><label>SLG Layer Start</label><input v-model.number="form.high_noise_sample_params.guidance.layer_start" type="number" step="0.01" /></div>
-                            <div class="field"><label>SLG Layer End</label><input v-model.number="form.high_noise_sample_params.guidance.layer_end" type="number" step="0.01" /></div>
-                            <div class="field"><label>SLG Scale</label><input v-model.number="form.high_noise_sample_params.guidance.scale" type="number" step="0.01" /></div>
+                            <div class="field"><label>蒸馏引导</label><input v-model.number="form.high_noise_sample_params.guidance.distilled_guidance" type="number" step="0.1" /></div>
+                            <div class="field"><label>Image CFG</label><input v-model="form.high_noise_sample_params.guidance.img_cfg" type="number" step="0.1" placeholder="留空 = 跟随文本 CFG" /></div>
+                            <div class="field"><label>SLG 层</label><input v-model="form.high_noise_sample_params.guidance.slg_layers" placeholder="7,8,9" /></div>
+                            <div class="field"><label>SLG 层开始</label><input v-model.number="form.high_noise_sample_params.guidance.layer_start" type="number" step="0.01" /></div>
+                            <div class="field"><label>SLG 层结束</label><input v-model.number="form.high_noise_sample_params.guidance.layer_end" type="number" step="0.01" /></div>
+                            <div class="field"><label>SLG 缩放</label><input v-model.number="form.high_noise_sample_params.guidance.scale" type="number" step="0.01" /></div>
                         </div>
                     </CollapsibleSection>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="Conditioning" :summary="conditioningSummary" :open="sectionState.conditioning" @toggle="toggleSection('conditioning')">
+                <CollapsibleSection class="stack-top" eyebrow="条件控制" :summary="conditioningSummary" :open="sectionState.conditioning" @toggle="toggleSection('conditioning')">
                     <div class="fields">
                         <div class="field"><label>CLIP Skip</label><input v-model.number="form.clip_skip" type="number" /></div>
                         <div class="field"><label>Strength</label><input v-model.number="form.strength" type="number" step="0.01" /></div>
@@ -734,13 +734,13 @@ onBeforeUnmount(() => {
                 </CollapsibleSection>
 
                 <CollapsibleSection class="stack-top" eyebrow="LoRA" :summary="loraSummary" :open="sectionState.lora" @toggle="toggleSection('lora')">
-                    <div v-if="!availableLoras.length" class="hint">No LoRA entries were returned by capabilities.</div>
-                    <div v-else-if="!form.lora.length" class="hint">No LoRA overrides configured.</div>
+                    <div v-if="!availableLoras.length" class="hint">服务器未返回 LoRA 条目。</div>
+                    <div v-else-if="!form.lora.length" class="hint">未配置 LoRA 覆盖。</div>
                     <div v-else class="list-editor">
                         <div class="list-row list-row--header">
                             <div>LoRA</div>
-                            <div>Multiplier</div>
-                            <div>High Noise</div>
+                            <div>权重</div>
+                            <div>高噪声</div>
                             <div></div>
                         </div>
                         <div v-for="(item, index) in form.lora" :key="index" class="list-row">
@@ -752,15 +752,15 @@ onBeforeUnmount(() => {
                             <input v-model.number="item.multiplier" type="number" step="0.1" />
                             <label class="checkbox list-row__checkbox">
                                 <input v-model="item.is_high_noise" type="checkbox" />
-                                <span>{{ item.is_high_noise ? "On" : "Off" }}</span>
+                                <span>{{ item.is_high_noise ? "开" : "关" }}</span>
                             </label>
-                            <button class="btn-ghost" type="button" @click="removeLora(index)">Remove</button>
+                            <button class="btn-ghost" type="button" @click="removeLora(index)">移除</button>
                         </div>
                     </div>
-                    <div><button class="btn-ghost" type="button" @click="addLora" :disabled="!availableLoras.length">Add LoRA</button></div>
+                    <div><button class="btn-ghost" type="button" @click="addLora" :disabled="!availableLoras.length">添加 LoRA</button></div>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="Image Inputs" :summary="imageInputsSummary" :open="sectionState.auxiliaryImages" @toggle="toggleSection('auxiliaryImages')">
+                <CollapsibleSection class="stack-top" eyebrow="图像输入" :summary="imageInputsSummary" :open="sectionState.auxiliaryImages" @toggle="toggleSection('auxiliaryImages')">
                     <div class="upload-grid">
                         <ImageDropzone
                             v-for="input in gridImageInputs"
@@ -785,118 +785,118 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div v-if="generationMode === 'image'" class="group">
-                        <label>Reference Images</label>
+                        <label>参考图像</label>
                         <ImageDropzone
-                            label="Reference Images"
-                            description="Multiple reference images supported."
+                            label="参考图像"
+                            description="支持多张参考图像。"
                             :items="form.ref_images"
                             multiple
                             @select="assignImages('ref_images', $event)"
                             @clear="clearImage('ref_images')"
                         />
-                        <div v-if="!form.ref_images.length" class="hint">No files selected.</div>
+                        <div v-if="!form.ref_images.length" class="hint">未选择文件。</div>
                         <div v-else class="file-list">
                             <div v-for="(item, index) in form.ref_images" :key="item.name + index" class="file-chip file-chip--preview">
                                 <button class="file-chip__thumb-button" type="button" @click="openLightbox(item.dataUrl, item.name)">
                                     <img class="file-chip__thumb" :src="item.dataUrl" :alt="item.name" />
                                 </button>
                                 <span class="file-chip__name">{{ item.name }}</span>
-                                <button class="icon-button" type="button" @click="removeCollectionImage('ref_images', index)">Remove</button>
+                                <button class="icon-button" type="button" @click="removeCollectionImage('ref_images', index)">移除</button>
                             </div>
                         </div>
                     </div>
 
                     <div v-else>
                         <div class="group">
-                            <label>Reference Images (MiniMax-H3 Ref2VA only)</label>
+                            <label>参考图像（仅 MiniMax-H3 Ref2VA）</label>
                             <ImageDropzone
-                                label="Reference Images"
-                                description="Only MiniMax-H3 Ref2VA uses these images; other video models ignore them. Cannot be combined with an initial or end frame."
+                                label="参考图像"
+                                description="仅 MiniMax-H3 Ref2VA 使用这些图像，其他视频模型会忽略。不能与起始帧或结束帧同时使用。"
                                 :items="form.ref_images"
                                 multiple
                                 @select="assignImages('ref_images', $event)"
                                 @clear="clearImage('ref_images')"
                             />
-                            <div v-if="!form.ref_images.length" class="hint">No files selected.</div>
+                            <div v-if="!form.ref_images.length" class="hint">未选择文件。</div>
                             <div v-else class="file-list">
                                 <div v-for="(item, index) in form.ref_images" :key="item.name + index" class="file-chip file-chip--preview">
                                     <button class="file-chip__thumb-button" type="button" @click="openLightbox(item.dataUrl, item.name)">
                                         <img class="file-chip__thumb" :src="item.dataUrl" :alt="item.name" />
                                     </button>
                                     <span class="file-chip__name">{{ item.name }}</span>
-                                    <button class="icon-button" type="button" @click="removeCollectionImage('ref_images', index)">Remove</button>
+                                    <button class="icon-button" type="button" @click="removeCollectionImage('ref_images', index)">移除</button>
                                 </div>
                             </div>
                         </div>
                         <div class="group stack-top">
-                            <label>Control Frames</label>
+                            <label>控制帧</label>
                             <ImageDropzone
-                                label="Control Frames"
-                                description="Upload ordered conditioning frames. The server preserves the array order."
+                                label="控制帧"
+                                description="上传有序的条件帧。服务器保持数组顺序。"
                                 :items="form.control_frames"
                                 multiple
                                 @select="assignImages('control_frames', $event)"
                                 @clear="clearImage('control_frames')"
                             />
-                            <div v-if="!form.control_frames.length" class="hint">No files selected.</div>
+                            <div v-if="!form.control_frames.length" class="hint">未选择文件。</div>
                             <div v-else class="file-list">
                                 <div v-for="(item, index) in form.control_frames" :key="item.name + index" class="file-chip file-chip--preview">
                                     <button class="file-chip__thumb-button" type="button" @click="openLightbox(item.dataUrl, item.name)">
                                         <img class="file-chip__thumb" :src="item.dataUrl" :alt="item.name" />
                                     </button>
                                     <span class="file-chip__name">{{ item.name }}</span>
-                                    <button class="icon-button" type="button" @click="removeCollectionImage('control_frames', index)">Remove</button>
+                                    <button class="icon-button" type="button" @click="removeCollectionImage('control_frames', index)">移除</button>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="VAE Tiling" :summary="vaeTilingSummary" :open="sectionState.vaeTiling" @toggle="toggleSection('vaeTiling')">
-                    <label class="checkbox"><input v-model="form.vae_tiling_params.enabled" type="checkbox" /><span>Enabled</span></label>
+                <CollapsibleSection class="stack-top" eyebrow="VAE 平铺" :summary="vaeTilingSummary" :open="sectionState.vaeTiling" @toggle="toggleSection('vaeTiling')">
+                    <label class="checkbox"><input v-model="form.vae_tiling_params.enabled" type="checkbox" /><span>启用</span></label>
                     <div class="fields">
-                        <div class="field"><label>Tile Width (px)</label><input v-model.number="form.vae_tiling_params.tile_size_w" type="number" /></div>
-                        <div class="field"><label>Tile Height (px)</label><input v-model.number="form.vae_tiling_params.tile_size_h" type="number" /></div>
+                        <div class="field"><label>平铺宽度 (px)</label><input v-model.number="form.vae_tiling_params.tile_size_w" type="number" /></div>
+                        <div class="field"><label>平铺高度 (px)</label><input v-model.number="form.vae_tiling_params.tile_size_h" type="number" /></div>
                     </div>
-                    <div class="field"><label>Target Overlap</label><input v-model.number="form.vae_tiling_params.target_overlap" type="number" step="0.01" /></div>
+                    <div class="field"><label>目标重叠</label><input v-model.number="form.vae_tiling_params.target_overlap" type="number" step="0.01" /></div>
                     <div class="fields">
-                        <div class="field"><label>Relative Width</label><input v-model.number="form.vae_tiling_params.rel_size_w" type="number" step="0.01" /></div>
-                        <div class="field"><label>Relative Height</label><input v-model.number="form.vae_tiling_params.rel_size_h" type="number" step="0.01" /></div>
+                        <div class="field"><label>相对宽度</label><input v-model.number="form.vae_tiling_params.rel_size_w" type="number" step="0.01" /></div>
+                        <div class="field"><label>相对高度</label><input v-model.number="form.vae_tiling_params.rel_size_h" type="number" step="0.01" /></div>
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection v-if="supportsPreview" class="stack-top" eyebrow="Preview" :summary="form.preview_mode === 'none' ? 'Disabled' : form.preview_mode" :open="sectionState.preview" @toggle="toggleSection('preview')">
+                <CollapsibleSection v-if="supportsPreview" class="stack-top" eyebrow="预览" :summary="form.preview_mode === 'none' ? '已禁用' : form.preview_mode" :open="sectionState.preview" @toggle="toggleSection('preview')">
                     <div class="fields">
                         <div class="field">
-                            <label>Preview Mode</label>
+                            <label>预览模式</label>
                             <select v-model="form.preview_mode">
                                 <option v-for="mode in previewModes" :key="mode" :value="mode">{{ mode }}</option>
                             </select>
                         </div>
                         <div class="field">
-                            <label>Interval (steps)</label>
+                            <label>间隔（步）</label>
                             <input v-model.number="form.preview_interval" type="number" min="1" step="1" />
                         </div>
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="Cache" :summary="cacheSummary" :open="sectionState.cache" @toggle="toggleSection('cache')">
+                <CollapsibleSection class="stack-top" eyebrow="缓存" :summary="cacheSummary" :open="sectionState.cache" @toggle="toggleSection('cache')">
                     <div class="field">
-                        <label>Mode</label>
+                        <label>模式</label>
                         <select v-model="form.cache.mode">
                             <option v-for="mode in CACHE_MODES" :key="mode" :value="mode">{{ mode }}</option>
                         </select>
                     </div>
-                    <div class="field field--full"><label>Cache Option</label><input v-model="form.cache.option" placeholder="threshold=0.25,start=0.15,end=0.95" /></div>
+                    <div class="field field--full"><label>缓存选项</label><input v-model="form.cache.option" placeholder="threshold=0.25,start=0.15,end=0.95" /></div>
                     <div class="field"><label>SCM Mask</label><input v-model="form.cache.scm_mask" /></div>
-                    <label class="checkbox"><input v-model="form.cache.scm_policy_dynamic" type="checkbox" /><span>Dynamic SCM Policy</span></label>
+                    <label class="checkbox"><input v-model="form.cache.scm_policy_dynamic" type="checkbox" /><span>动态 SCM 策略</span></label>
                 </CollapsibleSection>
             </section>
 
             <section class="panel output-panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Output</h2>
+                        <h2 class="panel-title">输出</h2>
                     </div>
                 </div>
 
@@ -910,37 +910,37 @@ onBeforeUnmount(() => {
                 <div v-else-if="videoPreviewSrc" class="hero-frame hero-frame--media">
                     <video class="hero-frame__video" :src="videoPreviewSrc" controls autoplay loop muted playsinline />
                 </div>
-                <button v-else class="hero-frame hero-frame--button" type="button" :disabled="!previewImageSrc" @click="openLightbox(previewImageSrc, 'Generated output')">
-                    <img v-if="previewImageSrc" :src="previewImageSrc" alt="Generated output" />
+                <button v-else class="hero-frame hero-frame--button" type="button" :disabled="!previewImageSrc" @click="openLightbox(previewImageSrc, '生成结果')">
+                    <img v-if="previewImageSrc" :src="previewImageSrc" alt="生成结果" />
                     <div v-else class="hero-placeholder">
-                        <h2>{{ generationMode === "video" ? "Generate Video" : "Generate Images" }}</h2>
+                        <h2>{{ generationMode === "video" ? "生成视频" : "生成图像" }}</h2>
                         <p>
                             {{ generationMode === "video"
-                                ? "Generated video or animated WebP output will appear here once the current job finishes."
-                                : "Generated images will appear here once the current job finishes." }}
+                                ? "当前任务完成后，生成的视频或动态 WebP 将显示在此处。"
+                                : "当前任务完成后，生成的图像将显示在此处。" }}
                         </p>
                     </div>
                 </button>
 
                 <div v-if="currentJobKind === 'vid_gen' && currentJob?.result?.output_format === 'avi'" class="hint stack-top">
-                    Browser playback for AVI depends on codec support. Download the file if the preview cannot play.
+                    AVI 播放取决于编解码器支持。如果预览无法播放，请下载文件。
                 </div>
 
                 <div class="metrics output-metrics">
                     <div class="metric">
-                        <div class="metric__label">Status</div>
+                        <div class="metric__label">状态</div>
                         <div class="metric__value">{{ currentStatus }}</div>
                     </div>
                     <div class="metric">
-                        <div class="metric__label">Queue</div>
+                        <div class="metric__label">队列</div>
                         <div class="metric__value">{{ currentJob?.queue_position ?? 0 }}</div>
                     </div>
                     <div class="metric">
-                        <div class="metric__label">Created</div>
+                        <div class="metric__label">创建时间</div>
                         <div class="metric__value mono">{{ formatUnixTime(currentJob?.created) }}</div>
                     </div>
                     <div class="metric">
-                        <div class="metric__label">Elapsed</div>
+                        <div class="metric__label">已用时间</div>
                         <div class="metric__value">{{ formatElapsed(currentJob?.started, currentJob?.completed) }}</div>
                     </div>
                     <div v-if="currentJobKind === 'vid_gen'" class="metric">
@@ -948,7 +948,7 @@ onBeforeUnmount(() => {
                         <div class="metric__value">{{ videoFps || "-" }}</div>
                     </div>
                     <div v-if="currentJobKind === 'vid_gen'" class="metric">
-                        <div class="metric__label">Frames</div>
+                        <div class="metric__label">帧数</div>
                         <div class="metric__value">{{ videoFrameCount || "-" }}</div>
                     </div>
                 </div>
@@ -958,23 +958,23 @@ onBeforeUnmount(() => {
 
                 <div class="output-controls">
                     <button class="btn output-controls__primary" type="button" :disabled="isJobRunning" @click="generate">
-                        {{ generationMode === "video" ? "Generate Video" : "Generate Image" }}
+                        {{ generationMode === "video" ? "生成视频" : "生成图像" }}
                     </button>
                     <div class="actions output-controls__secondary">
-                        <button class="btn-secondary" type="button" :disabled="!downloadableSrc" @click="downloadSelected">Download</button>
-                        <button class="btn-danger" type="button" :disabled="!canCancelCurrentJob" @click="cancelCurrentJob">Cancel</button>
+                        <button class="btn-secondary" type="button" :disabled="!downloadableSrc" @click="downloadSelected">下载</button>
+                        <button class="btn-danger" type="button" :disabled="!canCancelCurrentJob" @click="cancelCurrentJob">取消</button>
                     </div>
                 </div>
 
                 <div v-if="currentImages.length > 1" class="thumb-row">
                     <button v-for="(image, index) in currentImages" :key="image.index" class="thumb" :class="{ 'thumb--active': index === selectedOutputIndex }" type="button" @click="selectOutput(index)">
-                        <img :src="`data:image/${currentJob?.result?.output_format || 'png'};base64,${image.b64_json}`" :alt="`Output ${index + 1}`" />
+                        <img :src="`data:image/${currentJob?.result?.output_format || 'png'};base64,${image.b64_json}`" :alt="`输出 ${index + 1}`" />
                     </button>
                 </div>
             </section>
         </div>
         <div v-if="lightboxOpen && lightboxImageSrc" class="lightbox" @click.self="closeLightbox">
-            <button class="lightbox__close" type="button" @click="closeLightbox">Close</button>
+            <button class="lightbox__close" type="button" @click="closeLightbox">关闭</button>
             <img class="lightbox__image" :src="lightboxImageSrc" :alt="lightboxImageAlt" />
         </div>
     </div>
