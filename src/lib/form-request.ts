@@ -130,7 +130,7 @@ export function buildRequestBody(form: GenerationForm) {
     };
 
     if (!request.prompt) {
-        throw new Error("prompt is required");
+        throw new Error("请输入提示词");
     }
 
     return request;
@@ -152,7 +152,7 @@ export function buildImageRequestBody(form: GenerationForm) {
 
 export function buildVideoRequestBody(form: GenerationForm) {
     if (form.ref_images.length && (form.init_image || form.end_image)) {
-        throw new Error("Video reference images cannot be combined with an initial or end frame. Clear the reference images or both keyframes before generating.");
+        throw new Error("视频参考图像不能与起始帧或结束帧同时使用。请清除参考图像，或清除起始帧和结束帧后再生成。");
     }
 
     return {

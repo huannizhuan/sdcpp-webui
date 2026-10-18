@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 
 import CollapsibleSection from "./components/CollapsibleSection.vue";
 import ImageDropzone from "./components/ImageDropzone.vue";
+import InfoTip from "./components/InfoTip.vue";
 import StatusChip from "./components/StatusChip.vue";
 import { cancelJob, getCapabilities, getJob, submitImageJob, submitVideoJob } from "./lib/api";
 import { buildRequestBodyForMode, CACHE_MODES, createBlankForm, formFromCapabilities } from "./lib/form";
@@ -58,7 +59,7 @@ const nowSeconds = ref(Date.now() / 1000);
 
 const modelName = computed(() => {
     const model = capabilities.value?.model;
-    return model?.stem || model?.name || "No model info";
+    return model?.stem || model?.name || "无模型信息";
 });
 
 const supportedModes = computed(() => capabilities.value?.supported_modes || []);
@@ -89,13 +90,22 @@ const availableLoras = computed(() => capabilities.value?.loras || []);
 const currentImageInputs = computed(() => generationMode.value === "video" ? VIDEO_IMAGE_INPUTS : IMAGE_INPUTS);
 const gridImageInputs = computed(() => currentImageInputs.value.filter((input) => input.layout === "grid"));
 const fullImageInputs = computed(() => currentImageInputs.value.filter((input) => input.layout === "full"));
-const queueLimit = computed(() => capabilities.value?.limits?.max_queue_size ?? "unknown");
+const queueLimit = computed(() => capabilities.value?.limits?.max_queue_size ?? "未知");
 const canCancelQueued = computed(() => Boolean(currentJobFeatures.value.cancel_queued));
 const canCancelGenerating = computed(() => Boolean(currentJobFeatures.value.cancel_generating));
 const supportsPreview = computed(() => Boolean(currentJobFeatures.value.preview));
 const previewModes = computed(() => capabilities.value?.preview_modes || ["none", "proj", "tae", "vae"]);
 
 const currentStatus = computed(() => currentJob.value?.status || "idle");
+const STATUS_LABELS: Record<string, string> = {
+    idle: "空闲",
+    queued: "排队中",
+    generating: "生成中",
+    completed: "已完成",
+    failed: "失败",
+    cancelled: "已取消",
+};
+const currentStatusLabel = computed(() => STATUS_LABELS[currentStatus.value] || currentStatus.value);
 const currentJobKind = computed(() => currentJob.value?.kind || null);
 const currentImages = computed(() => currentJobKind.value === "img_gen" ? currentJob.value?.result?.images || [] : []);
 const selectedImage = computed(() => {
@@ -166,57 +176,61 @@ const isJobRunning = computed(() => {
     return currentStatus.value === "queued" || currentStatus.value === "generating";
 });
 
+function optionLabel(value: string): string {
+    return value === "default" ? "默认" : value;
+}
+
 function buildSampleSummary(sample: SampleParams): string {
-    const scheduler = sample.scheduler || "default";
-    const method = sample.sample_method || "default";
+    const scheduler = optionLabel(sample.scheduler || "default");
+    const method = optionLabel(sample.sample_method || "default");
     const steps = sample.sample_steps || 0;
     const flowShift = sample.flow_shift === "" || sample.flow_shift == null
-        ? "flow auto"
-        : `flow ${sample.flow_shift}`;
-    return `${scheduler} · ${flowShift} · ${method} · ${steps} steps`;
+        ? "偏移 自动"
+        : `偏移 ${sample.flow_shift}`;
+    return `${scheduler} · ${flowShift} · ${method} · ${steps} 步`;
 }
 
 function buildGuidanceSummary(sample: SampleParams): string {
     const cfg = sample.guidance.txt_cfg;
     const distilled = sample.guidance.distilled_guidance;
-    return `cfg ${cfg} · distilled ${distilled}`;
+    return `CFG ${cfg} · 蒸馏 ${distilled}`;
 }
 
 const sampleSummary = computed(() => buildSampleSummary(form.sample_params));
 const guidanceSummary = computed(() => buildGuidanceSummary(form.sample_params));
 const highNoiseSummary = computed(() => {
-    return `moe ${formatSummaryNumber(form.moe_boundary)} · ${buildSampleSummary(form.high_noise_sample_params)} · ${buildGuidanceSummary(form.high_noise_sample_params)}`;
+    return `MoE ${formatSummaryNumber(form.moe_boundary)} · ${buildSampleSummary(form.high_noise_sample_params)} · ${buildGuidanceSummary(form.high_noise_sample_params)}`;
 });
 const loraSummary = computed(() => {
     if (!form.lora.length) {
-        return "No LoRA";
+        return "未使用 LoRA";
     }
-    return `${form.lora.length} configured`;
+    return `已配置 ${form.lora.length} 个`;
 });
 const imageInputsSummary = computed(() => {
     const parts: string[] = [];
-    if (form.init_image) parts.push(generationMode.value === "video" ? "start" : "init");
+    if (form.init_image) parts.push(generationMode.value === "video" ? "起始帧" : "初始图像");
     if (generationMode.value === "image") {
-        if (form.mask_image) parts.push("mask");
-        if (form.control_image) parts.push("control");
-        if (form.ref_images.length) parts.push(`${form.ref_images.length} refs`);
+        if (form.mask_image) parts.push("蒙版");
+        if (form.control_image) parts.push("控制图");
+        if (form.ref_images.length) parts.push(`${form.ref_images.length} 张参考图`);
     } else {
-        if (form.end_image) parts.push("end");
-        if (form.ref_images.length) parts.push(`${form.ref_images.length} refs`);
-        if (form.control_frames.length) parts.push(`${form.control_frames.length} frames`);
+        if (form.end_image) parts.push("结束帧");
+        if (form.ref_images.length) parts.push(`${form.ref_images.length} 张参考图`);
+        if (form.control_frames.length) parts.push(`${form.control_frames.length} 帧控制帧`);
     }
-    return parts.length ? parts.join(" · ") : "No images";
+    return parts.length ? parts.join(" · ") : "未选择图像";
 });
 const vaeTilingSummary = computed(() => {
     if (!form.vae_tiling_params.enabled) {
-        return "Disabled";
+        return "已禁用";
     }
-    return `${form.vae_tiling_params.tile_size_w}×${form.vae_tiling_params.tile_size_h} · overlap ${form.vae_tiling_params.target_overlap}`;
+    return `${form.vae_tiling_params.tile_size_w}×${form.vae_tiling_params.tile_size_h} · 重叠 ${form.vae_tiling_params.target_overlap}`;
 });
 const cacheSummary = computed(() => {
     const mode = form.cache.mode || "disabled";
     if (mode === "disabled") {
-        return "Disabled";
+        return "已禁用";
     }
     const option = String(form.cache.option || "").trim();
     return option ? `${mode} · ${option}` : mode;
@@ -225,10 +239,10 @@ const conditioningSummary = computed(() => {
     const clipSkip = formatSummaryNumber(form.clip_skip, 0);
     const strength = formatSummaryNumber(form.strength);
     if (generationMode.value === "video") {
-        return `clip_skip ${clipSkip} · strength ${strength} · vace ${formatSummaryNumber(form.vace_strength)}`;
+        return `CLIP Skip ${clipSkip} · 强度 ${strength} · VACE ${formatSummaryNumber(form.vace_strength)}`;
     }
     const controlStrength = formatSummaryNumber(form.control_strength);
-    return `clip_skip ${clipSkip} · img ${strength} · control ${controlStrength}`;
+    return `CLIP Skip ${clipSkip} · 图像强度 ${strength} · 控制强度 ${controlStrength}`;
 });
 
 function defaultOutputFormatForMode(mode: GenerationMode): string {
@@ -487,7 +501,7 @@ function downloadSelected(): void {
     link.remove();
 }
 
-function openLightbox(src: string | null | undefined = previewImageSrc.value, alt = "Expanded image"): void {
+function openLightbox(src: string | null | undefined = previewImageSrc.value, alt = "放大查看"): void {
     if (!src) {
         return;
     }
@@ -550,47 +564,47 @@ onBeforeUnmount(() => {
                     </p>
                 </div>
                 <div class="page-header__meta">
-                    <StatusChip :status="serviceOnline ? 'online' : 'offline'" :label="serviceOnline ? 'service online' : 'service unavailable'" />
-                    <StatusChip :label="`queue ${queueLimit}`" />
-                    <StatusChip :status="currentStatus" :label="currentStatus" />
+                    <StatusChip :status="serviceOnline ? 'online' : 'offline'" :label="serviceOnline ? '服务在线' : '服务离线'" title="服务器连接状态" />
+                    <StatusChip :label="`队列上限 ${queueLimit}`" title="服务器允许同时排队的任务数量" />
+                    <StatusChip :status="currentStatus" :label="currentStatusLabel" title="当前任务状态" />
                 </div>
             </div>
             <div class="page-tabs">
                 <div class="page-tabs__list">
-                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'image' }" type="button" @click="selectGenerationMode('image')" :disabled="!supportsImageMode">图像生成</button>
-                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'video' }" type="button" @click="selectGenerationMode('video')" :disabled="!supportsVideoMode">视频生成</button>
-                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'settings' }" type="button" @click="activeTab = 'settings'">设置</button>
+                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'image' }" type="button" title="使用扩散模型生成静态图像" @click="selectGenerationMode('image')" :disabled="!supportsImageMode">图像生成</button>
+                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'video' }" type="button" title="使用视频模型生成视频序列" @click="selectGenerationMode('video')" :disabled="!supportsVideoMode">视频生成</button>
+                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'settings' }" type="button" title="配置服务器连接、输出格式和轮询间隔" @click="activeTab = 'settings'">设置</button>
                 </div>
                 <div class="page-tabs__actions">
-                    <button class="btn-secondary" type="button" @click="refreshCapabilities" :disabled="loadingCapabilities">{{ loadingCapabilities ? "刷新中..." : "刷新服务器信息" }}</button>
+                    <button class="btn-secondary" type="button" title="重新读取服务器能力、模型信息和可用选项" @click="refreshCapabilities" :disabled="loadingCapabilities">{{ loadingCapabilities ? "刷新中..." : "刷新服务器信息" }}</button>
                 </div>
             </div>
             <div v-if="activeTab === 'settings'" class="settings">
                 <div class="settings__grid">
                     <div class="field">
-                        <label>基础 URL</label>
+                        <label>基础 URL<InfoTip text="服务器地址，例如 http://192.168.1.10:7860；留空表示使用当前页面同源地址。" /></label>
                         <input v-model="baseUrl" placeholder="留空则使用同源地址" />
                     </div>
                     <div class="field">
-                        <label>队列限制</label>
+                        <label>队列限制<InfoTip text="服务器允许同时排队的任务数量上限，由服务器配置决定，只读。" /></label>
                         <input :value="queueLimit" readonly />
                     </div>
                     <div class="field">
-                        <label>输出格式 ({{ generationMode === "video" ? "视频" : "图像" }})</label>
+                        <label>可用输出格式（{{ generationMode === "video" ? "视频" : "图像" }}）<InfoTip text="当前模型与服务器支持的全部输出格式，只读。" /></label>
                         <input :value="outputFormats.join(', ')" readonly />
                     </div>
                     <div class="field">
-                        <label>输出格式</label>
+                        <label>输出格式<InfoTip text="生成结果使用的文件格式。图像常用 PNG（无损）或 JPEG（体积小）；视频常用 WebM、AVI 或动态 WebP。" /></label>
                         <select v-model="form.output_format">
                             <option v-for="format in outputFormats" :key="format" :value="format">{{ format }}</option>
                         </select>
                     </div>
                     <div class="field">
-                        <label>输出压缩质量</label>
+                        <label>输出压缩质量<InfoTip text="0–100，数值越高画质越好、文件越大；对 PNG 等无损格式通常无效。" /></label>
                         <input v-model.number="form.output_compression" type="number" min="0" max="100" />
                     </div>
                     <div class="field">
-                        <label>任务轮询间隔 (毫秒)</label>
+                        <label>任务轮询间隔（毫秒）<InfoTip text="查询任务状态的间隔。数值越小界面更新越快，但请求越频繁。" /></label>
                         <input v-model.number="pollIntervalMs" type="number" min="1" step="1" />
                     </div>
                 </div>
@@ -608,51 +622,51 @@ onBeforeUnmount(() => {
 
                 <div class="prompt-card">
                     <div class="field--full">
-                        <label>提示词</label>
+                        <label>提示词<InfoTip text="描述想要生成的画面、主体、风格、构图和细节。支持中英文；提示词越具体，结果通常越可控。" /></label>
                         <textarea v-model="form.prompt" :placeholder="generationMode === 'video' ? '描述您想要生成的动作、场景和构图' : '描述您想要生成的图像'" />
                     </div>
                     <div class="field--full stack-top">
-                        <label>反向提示词</label>
+                        <label>反向提示词<InfoTip text="不希望出现在结果中的内容，例如模糊、低质量、多余肢体、文字水印等。" /></label>
                         <textarea v-model="form.negative_prompt" placeholder="不想要的内容?" />
                     </div>
                 </div>
 
                 <div class="fields stack-top">
-                    <div class="field"><label>宽度</label><input v-model.number="form.width" type="number" min="64" /></div>
-                    <div class="field"><label>高度</label><input v-model.number="form.height" type="number" min="64" /></div>
+                    <div class="field"><label>宽度<InfoTip text="输出图像的宽度（像素）。越大细节越多，但生成更慢、占用显存更高。" /></label><input v-model.number="form.width" type="number" min="64" /></div>
+                    <div class="field"><label>高度<InfoTip text="输出图像的高度（像素）。建议使用模型训练时常用的分辨率。" /></label><input v-model.number="form.height" type="number" min="64" /></div>
                 </div>
 
                 <div v-if="generationMode === 'image'" class="fields stack-top">
-                    <div class="field"><label>批次数量</label><input v-model.number="form.batch_count" type="number" min="1" /></div>
-                    <div class="field"><label>种子</label><input v-model.number="form.seed" type="number" /></div>
+                    <div class="field"><label>批次数量<InfoTip text="一次生成多少张图像。数量越多耗时越长，也会增加显存占用。" /></label><input v-model.number="form.batch_count" type="number" min="1" /></div>
+                    <div class="field"><label>种子<InfoTip text="随机种子。相同的种子和参数可以复现相同结果；-1 表示每次随机。" /></label><input v-model.number="form.seed" type="number" /></div>
                 </div>
                 <div v-else class="fields stack-top">
-                    <div class="field"><label>视频帧数</label><input v-model.number="form.video_frames" type="number" min="1" /></div>
-                    <div class="field"><label>FPS</label><input v-model.number="form.fps" type="number" min="1" /></div>
+                    <div class="field"><label>视频帧数<InfoTip text="生成视频的总帧数，帧数越多视频越长，同时占用更多显存和时间。" /></label><input v-model.number="form.video_frames" type="number" min="1" /></div>
+                    <div class="field"><label>帧率（FPS）<InfoTip text="视频每秒播放的帧数。常见为 8–24；帧率越高播放越流畅。" /></label><input v-model.number="form.fps" type="number" min="1" /></div>
                 </div>
                 <div v-if="generationMode === 'video'" class="field stack-top">
-                    <label>种子</label>
+                    <label>种子<InfoTip text="随机种子。相同的种子和参数可以复现相同视频；-1 表示每次随机。" /></label>
                     <input v-model.number="form.seed" type="number" />
                 </div>
 
-                <CollapsibleSection class="stack-top" eyebrow="采样" :summary="sampleSummary" :open="sectionState.sample" variant="module" @toggle="toggleSection('sample')">
+                <CollapsibleSection class="stack-top" eyebrow="采样" tip="控制去噪采样算法、步数和时间步偏移；直接影响细节、速度与稳定性。" :summary="sampleSummary" :open="sectionState.sample" variant="module" @toggle="toggleSection('sample')">
                     <div class="fields">
                         <div class="field">
-                            <label>调度器</label>
+                            <label>调度器<InfoTip text="噪声/时间步的下降策略（discrete、karras、exponential 等）。不同调度器会影响细节与稳定性。" /></label>
                             <select v-model="form.sample_params.scheduler">
                                 <option value="default">默认</option>
                                 <option v-for="scheduler in schedulers" :key="scheduler" :value="scheduler">{{ scheduler }}</option>
                             </select>
                         </div>
-                        <div class="field"><label>Flow Shift</label><input v-model="form.sample_params.flow_shift" type="number" step="0.01" placeholder="留空 = 默认" /></div>
+                        <div class="field"><label>Flow Shift（流偏移）<InfoTip text="Flow 模型的时间步偏移。数值越大越偏向低噪声细节；留空使用模型默认值。" /></label><input v-model="form.sample_params.flow_shift" type="number" step="0.01" placeholder="留空 = 默认" /></div>
                         <div class="field">
-                            <label>采样方法</label>
+                            <label>采样方法<InfoTip text="去噪采样算法（euler、euler_a、dpm++2m 等）。影响生成速度、细节和稳定性。" /></label>
                             <select v-model="form.sample_params.sample_method">
                                 <option value="default">默认</option>
                                 <option v-for="sampler in samplers" :key="sampler" :value="sampler">{{ sampler }}</option>
                             </select>
                         </div>
-                        <div class="field"><label>步数</label><input v-model.number="form.sample_params.sample_steps" type="number" /></div>
+                        <div class="field"><label>步数<InfoTip text="采样迭代次数。步数越多通常细节越好，但生成更慢。" /></label><input v-model.number="form.sample_params.sample_steps" type="number" /></div>
                     </div>
                     <div class="sample-panel__extras">
                         <button class="module-card__link" type="button" @click="toggleSection('sampleAdvanced')">
@@ -660,15 +674,15 @@ onBeforeUnmount(() => {
                         </button>
                     </div>
                     <div v-if="sectionState.sampleAdvanced" class="fields">
-                        <div class="field"><label>Eta</label><input v-model="form.sample_params.eta" type="number" step="0.01" placeholder="留空 = 默认" /></div>
-                        <div class="field"><label>时间步偏移</label><input v-model.number="form.sample_params.shifted_timestep" type="number" /></div>
+                        <div class="field"><label>Eta（随机强度）<InfoTip text="随机采样的噪声强度，仅部分采样器有效。0 更确定，1 更随机。" /></label><input v-model="form.sample_params.eta" type="number" step="0.01" placeholder="留空 = 默认" /></div>
+                        <div class="field"><label>时间步偏移<InfoTip text="整体平移采样时间步，用于微调风格和细节；0 表示不偏移。" /></label><input v-model.number="form.sample_params.shifted_timestep" type="number" /></div>
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="引导" :summary="guidanceSummary" :open="sectionState.guidance" variant="module" @toggle="toggleSection('guidance')">
+                <CollapsibleSection class="stack-top" eyebrow="引导" tip="控制文本提示词与图像条件对生成结果的引导强度。" :summary="guidanceSummary" :open="sectionState.guidance" variant="module" @toggle="toggleSection('guidance')">
                     <div class="fields">
-                        <div class="field"><label>CFG Scale</label><input v-model.number="form.sample_params.guidance.txt_cfg" type="number" step="0.1" /></div>
-                        <div class="field"><label>蒸馏引导</label><input v-model.number="form.sample_params.guidance.distilled_guidance" type="number" step="0.1" /></div>
+                        <div class="field"><label>CFG 引导<InfoTip text="提示词引导强度（CFG Scale）。数值越高越贴合提示词，但过高可能导致过饱和或画面崩坏。" /></label><input v-model.number="form.sample_params.guidance.txt_cfg" type="number" step="0.1" /></div>
+                        <div class="field"><label>蒸馏引导<InfoTip text="蒸馏模型（如 FLUX）的引导强度，通常 3.5 左右；具体取决于模型。" /></label><input v-model.number="form.sample_params.guidance.distilled_guidance" type="number" step="0.1" /></div>
                     </div>
                     <div class="sample-panel__extras">
                         <button class="module-card__link" type="button" @click="toggleSection('guidanceAdvanced')">
@@ -676,71 +690,71 @@ onBeforeUnmount(() => {
                         </button>
                     </div>
                     <div v-if="sectionState.guidanceAdvanced" class="fields">
-                        <div class="field"><label>Image CFG</label><input v-model="form.sample_params.guidance.img_cfg" type="number" step="0.1" placeholder="留空 = 跟随文本 CFG" /></div>
-                        <div class="field"><label>SLG 层</label><input v-model="form.sample_params.guidance.slg_layers" placeholder="7,8,9" /></div>
-                        <div class="field"><label>SLG 层开始</label><input v-model.number="form.sample_params.guidance.layer_start" type="number" step="0.01" /></div>
-                        <div class="field"><label>SLG 层结束</label><input v-model.number="form.sample_params.guidance.layer_end" type="number" step="0.01" /></div>
-                        <div class="field"><label>SLG 缩放</label><input v-model.number="form.sample_params.guidance.scale" type="number" step="0.01" /></div>
+                        <div class="field"><label>图像 CFG<InfoTip text="图生图/编辑时的图像引导强度（Image CFG）；留空则跟随文本 CFG。" /></label><input v-model="form.sample_params.guidance.img_cfg" type="number" step="0.1" placeholder="留空 = 跟随文本 CFG" /></div>
+                        <div class="field"><label>SLG 层<InfoTip text="Skip Layer Guidance 使用的层编号，逗号分隔，例如 7,8,9。" /></label><input v-model="form.sample_params.guidance.slg_layers" placeholder="7,8,9" /></div>
+                        <div class="field"><label>SLG 层开始<InfoTip text="SLG 开始生效的时间步比例，范围 0–1。" /></label><input v-model.number="form.sample_params.guidance.layer_start" type="number" step="0.01" /></div>
+                        <div class="field"><label>SLG 层结束<InfoTip text="SLG 停止生效的时间步比例，范围 0–1。" /></label><input v-model.number="form.sample_params.guidance.layer_end" type="number" step="0.01" /></div>
+                        <div class="field"><label>SLG 缩放<InfoTip text="SLG 引导强度；0 表示禁用。" /></label><input v-model.number="form.sample_params.guidance.scale" type="number" step="0.01" /></div>
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection v-if="generationMode === 'video'" class="stack-top" eyebrow="高噪声通过" :summary="highNoiseSummary" :open="sectionState.highNoise" variant="module" @toggle="toggleSection('highNoise')">
+                <CollapsibleSection v-if="generationMode === 'video'" class="stack-top" eyebrow="高噪声通过" tip="Wan2.2 等 MoE 视频模型在高噪声阶段使用的独立采样与引导参数。" :summary="highNoiseSummary" :open="sectionState.highNoise" variant="module" @toggle="toggleSection('highNoise')">
                     <div class="field">
-                        <label>MoE 边界</label>
+                        <label>MoE 边界<InfoTip text="高噪声与低噪声模型切换的时间步边界，范围 0–1；仅对 MoE 模型有效。" /></label>
                         <input v-model.number="form.moe_boundary" type="number" step="0.001" />
                     </div>
-                    <CollapsibleSection eyebrow="采样" :summary="buildSampleSummary(form.high_noise_sample_params)" :open="sectionState.highNoiseSample" variant="plain" @toggle="toggleSection('highNoiseSample')">
+                    <CollapsibleSection eyebrow="采样" tip="高噪声阶段使用的采样算法与步数。" :summary="buildSampleSummary(form.high_noise_sample_params)" :open="sectionState.highNoiseSample" variant="plain" @toggle="toggleSection('highNoiseSample')">
                         <div class="fields">
                             <div class="field">
-                                <label>调度器</label>
+                                <label>调度器<InfoTip text="高噪声阶段的时间步下降策略。" /></label>
                                 <select v-model="form.high_noise_sample_params.scheduler">
                                     <option value="default">默认</option>
                                     <option v-for="scheduler in schedulers" :key="`high-noise-${scheduler}`" :value="scheduler">{{ scheduler }}</option>
                                 </select>
                             </div>
-                            <div class="field"><label>Flow Shift</label><input v-model="form.high_noise_sample_params.flow_shift" type="number" step="0.01" placeholder="留空 = 默认" /></div>
+                            <div class="field"><label>Flow Shift（流偏移）<InfoTip text="高噪声阶段的 Flow 时间步偏移；留空使用默认值。" /></label><input v-model="form.high_noise_sample_params.flow_shift" type="number" step="0.01" placeholder="留空 = 默认" /></div>
                             <div class="field">
-                                <label>采样方法</label>
+                                <label>采样方法<InfoTip text="高噪声阶段的去噪采样算法。" /></label>
                                 <select v-model="form.high_noise_sample_params.sample_method">
                                     <option value="default">默认</option>
                                     <option v-for="sampler in samplers" :key="`high-noise-${sampler}`" :value="sampler">{{ sampler }}</option>
                                 </select>
                             </div>
-                            <div class="field"><label>步数</label><input v-model.number="form.high_noise_sample_params.sample_steps" type="number" /></div>
-                            <div class="field"><label>Eta</label><input v-model="form.high_noise_sample_params.eta" type="number" step="0.01" placeholder="留空 = 自动" /></div>
-                            <div class="field"><label>时间步偏移</label><input v-model.number="form.high_noise_sample_params.shifted_timestep" type="number" /></div>
+                            <div class="field"><label>步数<InfoTip text="高噪声阶段的采样步数。" /></label><input v-model.number="form.high_noise_sample_params.sample_steps" type="number" /></div>
+                            <div class="field"><label>Eta（随机强度）<InfoTip text="高噪声阶段的随机采样强度；留空自动选择。" /></label><input v-model="form.high_noise_sample_params.eta" type="number" step="0.01" placeholder="留空 = 自动" /></div>
+                            <div class="field"><label>时间步偏移<InfoTip text="高噪声阶段的时间步平移量。" /></label><input v-model.number="form.high_noise_sample_params.shifted_timestep" type="number" /></div>
                         </div>
                     </CollapsibleSection>
-                    <CollapsibleSection class="stack-top" eyebrow="引导" :summary="buildGuidanceSummary(form.high_noise_sample_params)" :open="sectionState.highNoiseGuidance" variant="plain" @toggle="toggleSection('highNoiseGuidance')">
+                    <CollapsibleSection class="stack-top" eyebrow="引导" tip="高噪声阶段的文本与图像引导强度。" :summary="buildGuidanceSummary(form.high_noise_sample_params)" :open="sectionState.highNoiseGuidance" variant="plain" @toggle="toggleSection('highNoiseGuidance')">
                         <div class="fields">
-                            <div class="field"><label>CFG Scale</label><input v-model.number="form.high_noise_sample_params.guidance.txt_cfg" type="number" step="0.1" /></div>
-                            <div class="field"><label>蒸馏引导</label><input v-model.number="form.high_noise_sample_params.guidance.distilled_guidance" type="number" step="0.1" /></div>
-                            <div class="field"><label>Image CFG</label><input v-model="form.high_noise_sample_params.guidance.img_cfg" type="number" step="0.1" placeholder="留空 = 跟随文本 CFG" /></div>
-                            <div class="field"><label>SLG 层</label><input v-model="form.high_noise_sample_params.guidance.slg_layers" placeholder="7,8,9" /></div>
-                            <div class="field"><label>SLG 层开始</label><input v-model.number="form.high_noise_sample_params.guidance.layer_start" type="number" step="0.01" /></div>
-                            <div class="field"><label>SLG 层结束</label><input v-model.number="form.high_noise_sample_params.guidance.layer_end" type="number" step="0.01" /></div>
-                            <div class="field"><label>SLG 缩放</label><input v-model.number="form.high_noise_sample_params.guidance.scale" type="number" step="0.01" /></div>
+                            <div class="field"><label>CFG 引导<InfoTip text="高噪声阶段的提示词引导强度（CFG Scale）。" /></label><input v-model.number="form.high_noise_sample_params.guidance.txt_cfg" type="number" step="0.1" /></div>
+                            <div class="field"><label>蒸馏引导<InfoTip text="高噪声阶段的蒸馏引导强度。" /></label><input v-model.number="form.high_noise_sample_params.guidance.distilled_guidance" type="number" step="0.1" /></div>
+                            <div class="field"><label>图像 CFG<InfoTip text="高噪声阶段的图像引导强度（Image CFG）；留空跟随文本 CFG。" /></label><input v-model="form.high_noise_sample_params.guidance.img_cfg" type="number" step="0.1" placeholder="留空 = 跟随文本 CFG" /></div>
+                            <div class="field"><label>SLG 层<InfoTip text="高噪声阶段 SLG 使用的层编号，逗号分隔。" /></label><input v-model="form.high_noise_sample_params.guidance.slg_layers" placeholder="7,8,9" /></div>
+                            <div class="field"><label>SLG 层开始<InfoTip text="高噪声阶段 SLG 开始生效的时间步比例。" /></label><input v-model.number="form.high_noise_sample_params.guidance.layer_start" type="number" step="0.01" /></div>
+                            <div class="field"><label>SLG 层结束<InfoTip text="高噪声阶段 SLG 停止生效的时间步比例。" /></label><input v-model.number="form.high_noise_sample_params.guidance.layer_end" type="number" step="0.01" /></div>
+                            <div class="field"><label>SLG 缩放<InfoTip text="高噪声阶段的 SLG 引导强度。" /></label><input v-model.number="form.high_noise_sample_params.guidance.scale" type="number" step="0.01" /></div>
                         </div>
                     </CollapsibleSection>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="条件控制" :summary="conditioningSummary" :open="sectionState.conditioning" @toggle="toggleSection('conditioning')">
+                <CollapsibleSection class="stack-top" eyebrow="条件控制" tip="控制 CLIP 跳过层、图生图强度、ControlNet 控制强度与 VACE 视频控制强度。" :summary="conditioningSummary" :open="sectionState.conditioning" @toggle="toggleSection('conditioning')">
                     <div class="fields">
-                        <div class="field"><label>CLIP Skip</label><input v-model.number="form.clip_skip" type="number" /></div>
-                        <div class="field"><label>Strength</label><input v-model.number="form.strength" type="number" step="0.01" /></div>
-                        <div v-if="generationMode === 'image'" class="field"><label>Control Strength</label><input v-model.number="form.control_strength" type="number" step="0.01" /></div>
-                        <div v-if="generationMode === 'video'" class="field"><label>VACE Strength</label><input v-model.number="form.vace_strength" type="number" step="0.01" /></div>
+                        <div class="field"><label>CLIP 跳过层<InfoTip text="跳过 CLIP 的最后若干层（CLIP Skip）。1 表示不跳过，2 表示跳过一层；不同模型常用值不同。" /></label><input v-model.number="form.clip_skip" type="number" /></div>
+                        <div class="field"><label>强度<InfoTip text="图生图/重绘强度。数值越大，结果与原图差异越明显。" /></label><input v-model.number="form.strength" type="number" step="0.01" /></div>
+                        <div v-if="generationMode === 'image'" class="field"><label>控制强度<InfoTip text="ControlNet 等控制模型的影响强度；越高越严格遵循控制图。" /></label><input v-model.number="form.control_strength" type="number" step="0.01" /></div>
+                        <div v-if="generationMode === 'video'" class="field"><label>VACE 强度<InfoTip text="VACE 视频控制的影响强度；越高越严格遵循控制序列。" /></label><input v-model.number="form.vace_strength" type="number" step="0.01" /></div>
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="LoRA" :summary="loraSummary" :open="sectionState.lora" @toggle="toggleSection('lora')">
+                <CollapsibleSection class="stack-top" eyebrow="LoRA" tip="加载并调节 LoRA 适配器；可分别控制权重以及是否只作用于高噪声阶段。" :summary="loraSummary" :open="sectionState.lora" @toggle="toggleSection('lora')">
                     <div v-if="!availableLoras.length" class="hint">服务器未返回 LoRA 条目。</div>
                     <div v-else-if="!form.lora.length" class="hint">未配置 LoRA 覆盖。</div>
                     <div v-else class="list-editor">
                         <div class="list-row list-row--header">
-                            <div>LoRA</div>
-                            <div>权重</div>
-                            <div>高噪声</div>
+                            <div>LoRA<InfoTip text="选择要应用的 LoRA 模型文件。" :focusable="false" /></div>
+                            <div>权重<InfoTip text="LoRA 影响强度，1.0 表示模型原始强度。" :focusable="false" /></div>
+                            <div>高噪声<InfoTip text="仅对 Wan2.2 等 MoE 模型有效：勾选后只在高噪声阶段应用该 LoRA。" :focusable="false" /></div>
                             <div></div>
                         </div>
                         <div v-for="(item, index) in form.lora" :key="index" class="list-row">
@@ -749,24 +763,25 @@ onBeforeUnmount(() => {
                                     {{ lora.name }} ({{ lora.path }})
                                 </option>
                             </select>
-                            <input v-model.number="item.multiplier" type="number" step="0.1" />
-                            <label class="checkbox list-row__checkbox">
+                            <input v-model.number="item.multiplier" type="number" step="0.1" title="LoRA 权重，1.0 为原始强度" />
+                            <label class="checkbox list-row__checkbox" title="仅在高噪声阶段应用该 LoRA（MoE 模型）">
                                 <input v-model="item.is_high_noise" type="checkbox" />
                                 <span>{{ item.is_high_noise ? "开" : "关" }}</span>
                             </label>
                             <button class="btn-ghost" type="button" @click="removeLora(index)">移除</button>
                         </div>
                     </div>
-                    <div><button class="btn-ghost" type="button" @click="addLora" :disabled="!availableLoras.length">添加 LoRA</button></div>
+                    <div><button class="btn-ghost" type="button" title="添加一个新的 LoRA 配置项" @click="addLora" :disabled="!availableLoras.length">添加 LoRA</button></div>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="图像输入" :summary="imageInputsSummary" :open="sectionState.auxiliaryImages" @toggle="toggleSection('auxiliaryImages')">
+                <CollapsibleSection class="stack-top" eyebrow="图像输入" tip="设置初始图、蒙版、控制图、参考图或视频控制帧，用于图生图、局部重绘和条件生成。" :summary="imageInputsSummary" :open="sectionState.auxiliaryImages" @toggle="toggleSection('auxiliaryImages')">
                     <div class="upload-grid">
                         <ImageDropzone
                             v-for="input in gridImageInputs"
                             :key="input.target"
                             :label="input.label"
                             :description="input.description"
+                            :tip="input.tip"
                             :preview="getFormImage(input.target)"
                             @select="assignImages(input.target, $event)"
                             @clear="clearImage(input.target)"
@@ -777,6 +792,7 @@ onBeforeUnmount(() => {
                         <ImageDropzone
                             :label="input.label"
                             :description="input.description"
+                            :tip="input.tip"
                             :preview="getFormImage(input.target)"
                             @select="assignImages(input.target, $event)"
                             @clear="clearImage(input.target)"
@@ -785,10 +801,11 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div v-if="generationMode === 'image'" class="group">
-                        <label>参考图像</label>
+                        <label>参考图像<InfoTip text="用于风格/角色参考或 Kontext 等编辑模型；不同模型对参考图数量和支持方式不同。" /></label>
                         <ImageDropzone
                             label="参考图像"
                             description="支持多张参考图像。"
+                            tip="可一次选择多张参考图，服务器会保持选择顺序；部分模型仅支持一张。"
                             :items="form.ref_images"
                             multiple
                             @select="assignImages('ref_images', $event)"
@@ -808,10 +825,11 @@ onBeforeUnmount(() => {
 
                     <div v-else>
                         <div class="group">
-                            <label>参考图像（仅 MiniMax-H3 Ref2VA）</label>
+                            <label>参考图像（仅 MiniMax-H3 Ref2VA）<InfoTip text="仅 MiniMax-H3 Ref2VA 使用这些参考图像，其他视频模型会忽略；不能与起始帧或结束帧同时使用。" /></label>
                             <ImageDropzone
                                 label="参考图像"
                                 description="仅 MiniMax-H3 Ref2VA 使用这些图像，其他视频模型会忽略。不能与起始帧或结束帧同时使用。"
+                                tip="可一次选择多张参考图，服务器会保持选择顺序。"
                                 :items="form.ref_images"
                                 multiple
                                 @select="assignImages('ref_images', $event)"
@@ -829,10 +847,11 @@ onBeforeUnmount(() => {
                             </div>
                         </div>
                         <div class="group stack-top">
-                            <label>控制帧</label>
+                            <label>控制帧<InfoTip text="按文件名顺序作为视频条件帧；请确保文件名排序与实际时间顺序一致。" /></label>
                             <ImageDropzone
                                 label="控制帧"
                                 description="上传有序的条件帧。服务器保持数组顺序。"
+                                tip="可一次选择多帧，服务器按选择/文件名顺序使用；用于 VACE 等视频控制。"
                                 :items="form.control_frames"
                                 multiple
                                 @select="assignImages('control_frames', $event)"
@@ -852,44 +871,50 @@ onBeforeUnmount(() => {
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="VAE 平铺" :summary="vaeTilingSummary" :open="sectionState.vaeTiling" @toggle="toggleSection('vaeTiling')">
-                    <label class="checkbox"><input v-model="form.vae_tiling_params.enabled" type="checkbox" /><span>启用</span></label>
+                <CollapsibleSection class="stack-top" eyebrow="VAE 平铺" tip="把 VAE 解码/编码拆成小块以降低显存占用，可能略微变慢；适合高分辨率或显存不足时。" :summary="vaeTilingSummary" :open="sectionState.vaeTiling" @toggle="toggleSection('vaeTiling')">
+                    <label class="checkbox" title="启用 VAE 分块处理">
+                        <input v-model="form.vae_tiling_params.enabled" type="checkbox" />
+                        <span>启用<InfoTip text="开启后 VAE 会分块处理图像，降低峰值显存占用。" :focusable="false" /></span>
+                    </label>
                     <div class="fields">
-                        <div class="field"><label>平铺宽度 (px)</label><input v-model.number="form.vae_tiling_params.tile_size_w" type="number" /></div>
-                        <div class="field"><label>平铺高度 (px)</label><input v-model.number="form.vae_tiling_params.tile_size_h" type="number" /></div>
+                        <div class="field"><label>平铺宽度（像素）<InfoTip text="每个图块的宽度（像素）；0 表示由服务器自动决定。" /></label><input v-model.number="form.vae_tiling_params.tile_size_w" type="number" /></div>
+                        <div class="field"><label>平铺高度（像素）<InfoTip text="每个图块的高度（像素）；0 表示由服务器自动决定。" /></label><input v-model.number="form.vae_tiling_params.tile_size_h" type="number" /></div>
                     </div>
-                    <div class="field"><label>目标重叠</label><input v-model.number="form.vae_tiling_params.target_overlap" type="number" step="0.01" /></div>
+                    <div class="field"><label>目标重叠<InfoTip text="相邻图块的重叠比例，范围 0–1；适当重叠可以减少拼接接缝。" /></label><input v-model.number="form.vae_tiling_params.target_overlap" type="number" step="0.01" /></div>
                     <div class="fields">
-                        <div class="field"><label>相对宽度</label><input v-model.number="form.vae_tiling_params.rel_size_w" type="number" step="0.01" /></div>
-                        <div class="field"><label>相对高度</label><input v-model.number="form.vae_tiling_params.rel_size_h" type="number" step="0.01" /></div>
+                        <div class="field"><label>相对宽度<InfoTip text="以图像比例（<1）或每行图块数（≥1）表示平铺宽度；优先于像素尺寸。" /></label><input v-model.number="form.vae_tiling_params.rel_size_w" type="number" step="0.01" /></div>
+                        <div class="field"><label>相对高度<InfoTip text="以图像比例（<1）或每列图块数（≥1）表示平铺高度；优先于像素尺寸。" /></label><input v-model.number="form.vae_tiling_params.rel_size_h" type="number" step="0.01" /></div>
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection v-if="supportsPreview" class="stack-top" eyebrow="预览" :summary="form.preview_mode === 'none' ? '已禁用' : form.preview_mode" :open="sectionState.preview" @toggle="toggleSection('preview')">
+                <CollapsibleSection v-if="supportsPreview" class="stack-top" eyebrow="预览" tip="生成过程中显示中间结果；预览会占用额外时间，但便于观察进度。" :summary="form.preview_mode === 'none' ? '已禁用' : form.preview_mode" :open="sectionState.preview" @toggle="toggleSection('preview')">
                     <div class="fields">
                         <div class="field">
-                            <label>预览模式</label>
+                            <label>预览模式<InfoTip text="选择预览解码方式：none 关闭，proj/tae 速度快、质量低，vae 质量最高但更慢。" /></label>
                             <select v-model="form.preview_mode">
                                 <option v-for="mode in previewModes" :key="mode" :value="mode">{{ mode }}</option>
                             </select>
                         </div>
                         <div class="field">
-                            <label>间隔（步）</label>
+                            <label>间隔（步）<InfoTip text="每隔多少采样步刷新一次预览；数值越小越流畅，但开销越大。" /></label>
                             <input v-model.number="form.preview_interval" type="number" min="1" step="1" />
                         </div>
                     </div>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="缓存" :summary="cacheSummary" :open="sectionState.cache" @toggle="toggleSection('cache')">
+                <CollapsibleSection class="stack-top" eyebrow="缓存" tip="跳过部分重复计算以加速生成；缓存越激进速度越快，但可能损失细节。" :summary="cacheSummary" :open="sectionState.cache" @toggle="toggleSection('cache')">
                     <div class="field">
-                        <label>模式</label>
+                        <label>模式<InfoTip text="缓存策略：disabled 关闭；easycache/ucache/dbcache/taylorseer/cache-dit/spectrum 为不同的加速算法。" /></label>
                         <select v-model="form.cache.mode">
                             <option v-for="mode in CACHE_MODES" :key="mode" :value="mode">{{ mode }}</option>
                         </select>
                     </div>
-                    <div class="field field--full"><label>缓存选项</label><input v-model="form.cache.option" placeholder="threshold=0.25,start=0.15,end=0.95" /></div>
-                    <div class="field"><label>SCM Mask</label><input v-model="form.cache.scm_mask" /></div>
-                    <label class="checkbox"><input v-model="form.cache.scm_policy_dynamic" type="checkbox" /><span>动态 SCM 策略</span></label>
+                    <div class="field field--full"><label>缓存选项<InfoTip text="对应缓存算法的参数，逗号分隔的 key=value，例如 threshold=0.25,start=0.15,end=0.95。" /></label><input v-model="form.cache.option" placeholder="threshold=0.25,start=0.15,end=0.95" /></div>
+                    <div class="field"><label>SCM 掩码<InfoTip text="Cache-DiT 的 SCM 步掩码（SCM Mask），逗号分隔的 0/1：1 表示计算，0 表示允许缓存。" /></label><input v-model="form.cache.scm_mask" /></div>
+                    <label class="checkbox" title="根据误差动态调整 SCM 缓存策略">
+                        <input v-model="form.cache.scm_policy_dynamic" type="checkbox" />
+                        <span>动态 SCM 策略<InfoTip text="根据每步误差动态决定是否复用缓存；关闭后使用固定的静态策略。" :focusable="false" /></span>
+                    </label>
                 </CollapsibleSection>
             </section>
 
@@ -901,16 +926,16 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div v-if="livePreviewSrc" class="hero-frame hero-frame--media hero-frame--preview">
-                    <img class="hero-frame__image" :src="livePreviewSrc" alt="Live preview" />
+                    <img class="hero-frame__image" :src="livePreviewSrc" alt="实时预览" />
                     <div class="hero-frame__preview-overlay">
-                        <span class="hero-frame__preview-label">Preview</span>
-                        <span class="hero-frame__preview-step">Pass {{ livePreviewPass }} · {{ livePreviewStep }} / {{ livePreviewTotalSteps }} steps</span>
+                        <span class="hero-frame__preview-label">实时预览</span>
+                        <span class="hero-frame__preview-step">第 {{ livePreviewPass }} 轮 · {{ livePreviewStep }} / {{ livePreviewTotalSteps }} 步</span>
                     </div>
                 </div>
                 <div v-else-if="videoPreviewSrc" class="hero-frame hero-frame--media">
                     <video class="hero-frame__video" :src="videoPreviewSrc" controls autoplay loop muted playsinline />
                 </div>
-                <button v-else class="hero-frame hero-frame--button" type="button" :disabled="!previewImageSrc" @click="openLightbox(previewImageSrc, '生成结果')">
+                <button v-else class="hero-frame hero-frame--button" type="button" :disabled="!previewImageSrc" title="点击放大查看生成结果" @click="openLightbox(previewImageSrc, '生成结果')">
                     <img v-if="previewImageSrc" :src="previewImageSrc" alt="生成结果" />
                     <div v-else class="hero-placeholder">
                         <h2>{{ generationMode === "video" ? "生成视频" : "生成图像" }}</h2>
@@ -927,27 +952,27 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="metrics output-metrics">
-                    <div class="metric">
+                    <div class="metric" title="当前任务的执行状态">
                         <div class="metric__label">状态</div>
-                        <div class="metric__value">{{ currentStatus }}</div>
+                        <div class="metric__value">{{ currentStatusLabel }}</div>
                     </div>
-                    <div class="metric">
+                    <div class="metric" title="当前任务在队列中的位置，0 表示正在生成或已结束">
                         <div class="metric__label">队列</div>
                         <div class="metric__value">{{ currentJob?.queue_position ?? 0 }}</div>
                     </div>
-                    <div class="metric">
+                    <div class="metric" title="任务创建时间">
                         <div class="metric__label">创建时间</div>
                         <div class="metric__value mono">{{ formatUnixTime(currentJob?.created) }}</div>
                     </div>
-                    <div class="metric">
+                    <div class="metric" title="任务从开始到完成（或当前）的耗时">
                         <div class="metric__label">已用时间</div>
                         <div class="metric__value">{{ formatElapsed(currentJob?.started, currentJob?.completed) }}</div>
                     </div>
-                    <div v-if="currentJobKind === 'vid_gen'" class="metric">
-                        <div class="metric__label">FPS</div>
+                    <div v-if="currentJobKind === 'vid_gen'" class="metric" title="生成视频的帧率">
+                        <div class="metric__label">帧率</div>
                         <div class="metric__value">{{ videoFps || "-" }}</div>
                     </div>
-                    <div v-if="currentJobKind === 'vid_gen'" class="metric">
+                    <div v-if="currentJobKind === 'vid_gen'" class="metric" title="生成视频的总帧数">
                         <div class="metric__label">帧数</div>
                         <div class="metric__value">{{ videoFrameCount || "-" }}</div>
                     </div>
@@ -957,12 +982,12 @@ onBeforeUnmount(() => {
                 <div v-else-if="currentJob?.error?.message" class="status-message status-message--error">{{ currentJob.error.message }}</div>
 
                 <div class="output-controls">
-                    <button class="btn output-controls__primary" type="button" :disabled="isJobRunning" @click="generate">
+                    <button class="btn output-controls__primary" type="button" :disabled="isJobRunning" title="把当前参数提交到服务器开始生成" @click="generate">
                         {{ generationMode === "video" ? "生成视频" : "生成图像" }}
                     </button>
                     <div class="actions output-controls__secondary">
-                        <button class="btn-secondary" type="button" :disabled="!downloadableSrc" @click="downloadSelected">下载</button>
-                        <button class="btn-danger" type="button" :disabled="!canCancelCurrentJob" @click="cancelCurrentJob">取消</button>
+                        <button class="btn-secondary" type="button" :disabled="!downloadableSrc" title="下载当前生成结果" @click="downloadSelected">下载</button>
+                        <button class="btn-danger" type="button" :disabled="!canCancelCurrentJob" title="取消排队中的任务；正在生成的任务可能无法中断" @click="cancelCurrentJob">取消</button>
                     </div>
                 </div>
 

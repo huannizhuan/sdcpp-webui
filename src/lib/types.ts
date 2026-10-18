@@ -24,6 +24,7 @@ export interface ImageInputConfig {
   target: ImageTarget;
   label: string;
   description: string;
+  tip?: string;
   layout: "grid" | "full";
 }
 

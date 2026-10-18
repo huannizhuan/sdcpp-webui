@@ -1,16 +1,20 @@
 <script setup lang="ts">
+import InfoTip from "./InfoTip.vue";
+
 type Variant = "module" | "section" | "plain";
 
 const props = withDefaults(defineProps<{
     eyebrow?: string;
     title?: string;
     summary?: string;
+    tip?: string;
     open: boolean;
     variant?: Variant;
 }>(), {
     eyebrow: "",
     title: "",
     summary: "",
+    tip: "",
     variant: "section",
 });
 
@@ -48,12 +52,12 @@ function onToggle(): void {
                 <slot name="header" />
             </span>
             <span v-else class="module-card__copy">
-                <span v-if="eyebrow" class="module-card__eyebrow">{{ eyebrow }}</span>
+                <span v-if="eyebrow" class="module-card__eyebrow">{{ eyebrow }}<InfoTip v-if="tip" :text="tip" :focusable="false" /></span>
                 <span v-if="title && variant === 'plain'" class="advanced-group__title">{{ title }}</span>
                 <span v-else-if="title" class="module-card__summary">{{ title }}</span>
                 <span v-if="summary && !open" class="module-card__summary">{{ summary }}</span>
             </span>
-            <span class="module-card__action">{{ open ? "Hide" : "Show" }}</span>
+            <span class="module-card__action">{{ open ? "收起" : "展开" }}</span>
         </button>
         <div v-if="open" :class="bodyClass[variant] || bodyClass.section">
             <slot />

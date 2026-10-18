@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import InfoTip from "./InfoTip.vue";
 import type { ImageEntry } from "../lib/types";
 
 const props = withDefaults(defineProps<{
     label: string;
     description?: string;
+    tip?: string;
     preview?: ImageEntry | null;
     items?: ImageEntry[];
     multiple?: boolean;
 }>(), {
     description: "",
+    tip: "",
     preview: null,
     items: () => [],
     multiple: false,
@@ -26,8 +29,8 @@ const hasSelection = computed(() => Boolean(props.preview) || props.items.length
 
 const summary = computed(() => {
     return props.multiple
-        ? (props.items.length ? `${props.items.length} file(s)` : "No files selected")
-        : (props.preview?.name || "No file selected");
+        ? (props.items.length ? `已选择 ${props.items.length} 个文件` : "未选择文件")
+        : (props.preview?.name || "未选择文件");
 });
 
 function emitSelection(files: FileList | undefined | null): void {
@@ -55,6 +58,7 @@ function onDrop(event: DragEvent): void {
             v-if="preview"
             class="upload-card__preview-button"
             type="button"
+            title="点击放大查看已选图片"
             @click="$emit('preview', preview)"
         >
             <img
@@ -64,19 +68,20 @@ function onDrop(event: DragEvent): void {
             />
         </button>
         <div v-else class="upload-card__drop">
-            <div class="upload-card__label">{{ label }}</div>
+            <div class="upload-card__label">{{ label }}<InfoTip v-if="tip" :text="tip" /></div>
             <div>{{ description }}</div>
             <div class="hint">{{ summary }}</div>
         </div>
         <div class="upload-card__actions">
-            <button class="btn-ghost" type="button" @click="inputRef?.click()">Select</button>
+            <button class="btn-ghost" type="button" title="选择一张或多张图片" @click="inputRef?.click()">选择图片</button>
             <button
                 v-if="hasSelection"
                 class="btn-ghost"
                 type="button"
+                title="清除已选择的图片"
                 @click="$emit('clear')"
             >
-                Clear
+                清除
             </button>
             <input
                 ref="inputRef"

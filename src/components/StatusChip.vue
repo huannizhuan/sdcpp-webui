@@ -25,5 +25,5 @@ const classes = computed(() => ["chip", tone.value && `chip--${tone.value}`].fil
 </script>
 
 <template>
-    <span :class="classes">{{ label || status || "idle" }}</span>
+    <span :class="classes">{{ label || status || "空闲" }}</span>
 </template>
