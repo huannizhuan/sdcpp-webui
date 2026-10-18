@@ -1044,3 +1044,45 @@ button {
     flex-wrap: wrap;
     gap: 2px;
 }
+
+/* ------------------------------------------------------------------------- */
+/* 生成进度（与后台日志一致的 ASCII 进度条）                                  */
+/* ------------------------------------------------------------------------- */
+
+.generation-progress {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--panel-subtle);
+}
+
+.generation-progress__bar {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--text);
+}
+
+.generation-progress__meta {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.generation-progress__meta strong {
+    color: var(--text);
+    font-weight: 600;
+}
+
+@media (max-width: 720px) {
+    .generation-progress__bar {
+        font-size: 12px;
+    }
+}

@@ -151,6 +151,63 @@ const livePreviewSrc = computed(() => {
 const livePreviewPass = computed(() => currentJob.value?.preview?.pass ?? 1);
 const livePreviewStep = computed(() => currentJob.value?.preview?.step ?? 0);
 const livePreviewTotalSteps = computed(() => currentJob.value?.preview?.total_steps ?? 0);
+
+const progressInfo = computed(() => {
+    const progress = currentJob.value?.progress;
+    if (progress && progress.total_steps > 0) {
+        return progress;
+    }
+    const preview = currentJob.value?.preview;
+    if (preview && preview.total_steps > 0) {
+        return {
+            pass: preview.pass,
+            step: preview.step,
+            total_steps: preview.total_steps,
+            s_per_it: 0,
+        };
+    }
+    return null;
+});
+const progressPass = computed(() => progressInfo.value?.pass ?? 0);
+const progressStep = computed(() => {
+    const info = progressInfo.value;
+    if (!info) {
+        return 0;
+    }
+    return Math.min(info.step, info.total_steps);
+});
+const progressTotalSteps = computed(() => progressInfo.value?.total_steps ?? 0);
+const progressSPerIt = computed(() => Number(progressInfo.value?.s_per_it ?? 0));
+const progressSpeed = computed(() => {
+    const seconds = progressSPerIt.value;
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+        return "-";
+    }
+    if (seconds < 1) {
+        return `${(1 / seconds).toFixed(2)}it/s`;
+    }
+    return `${seconds.toFixed(2)}s/it`;
+});
+const progressBarText = computed(() => {
+    const total = progressTotalSteps.value;
+    if (total <= 0) {
+        return "";
+    }
+    const step = progressStep.value;
+    const width = 50;
+    const current = Math.floor((step * width) / total);
+    let bar = "";
+    for (let i = 0; i < width; i++) {
+        if (i > current) {
+            bar += " ";
+        } else if (i === current && i !== width - 1) {
+            bar += ">";
+        } else {
+            bar += "=";
+        }
+    }
+    return `|${bar}| ${step}/${total}`;
+});
 const downloadableSrc = computed(() => {
     const result = currentJob.value?.result;
     if (currentJobKind.value === "vid_gen" && result?.b64_json && videoMimeType.value) {
@@ -968,6 +1025,14 @@ onBeforeUnmount(() => {
                         <div class="metric__label">已用时间</div>
                         <div class="metric__value">{{ formatElapsed(currentJob?.started, currentJob?.completed) }}</div>
                     </div>
+                    <div v-if="progressTotalSteps > 0" class="metric" title="当前采样进度（已完成步数 / 总步数）">
+                        <div class="metric__label">步数</div>
+                        <div class="metric__value">{{ progressStep }}/{{ progressTotalSteps }}</div>
+                    </div>
+                    <div v-if="progressTotalSteps > 0" class="metric" title="每步采样耗时，数值越小越快">
+                        <div class="metric__label">速度</div>
+                        <div class="metric__value">{{ progressSpeed }}</div>
+                    </div>
                     <div v-if="currentJobKind === 'vid_gen'" class="metric" title="生成视频的帧率">
                         <div class="metric__label">帧率</div>
                         <div class="metric__value">{{ videoFps || "-" }}</div>
@@ -975,6 +1040,15 @@ onBeforeUnmount(() => {
                     <div v-if="currentJobKind === 'vid_gen'" class="metric" title="生成视频的总帧数">
                         <div class="metric__label">帧数</div>
                         <div class="metric__value">{{ videoFrameCount || "-" }}</div>
+                    </div>
+                </div>
+
+                <div v-if="progressTotalSteps > 0" class="generation-progress" title="与后台日志一致的采样进度">
+                    <div class="generation-progress__bar">{{ progressBarText }}</div>
+                    <div class="generation-progress__meta">
+                        <span>步数 <strong>{{ progressStep }}/{{ progressTotalSteps }}</strong></span>
+                        <span>速度 <strong>{{ progressSpeed }}</strong></span>
+                        <span v-if="progressPass > 1">第 {{ progressPass }} 轮</span>
                     </div>
                 </div>
 

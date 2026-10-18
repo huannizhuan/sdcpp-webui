@@ -179,6 +179,12 @@ export interface Job {
     total_steps: number;
     b64_json: string;
   } | null;
+  progress?: {
+    pass: number;
+    step: number;
+    total_steps: number;
+    s_per_it: number;
+  } | null;
   error?: {
     code?: string;
     message?: string;
