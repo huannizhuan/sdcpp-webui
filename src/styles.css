@@ -1046,7 +1046,7 @@ button {
 }
 
 /* ------------------------------------------------------------------------- */
-/* 生成进度（与后台日志一致的 ASCII 进度条）                                  */
+/* 常驻采样进度框                                                            */
 /* ------------------------------------------------------------------------- */
 
 .generation-progress {
@@ -1057,12 +1057,10 @@ button {
     background: var(--panel-subtle);
 }
 
-.generation-progress__bar {
-    font-family: var(--font-mono);
+.generation-progress__title {
+    margin-bottom: 8px;
     font-size: 13px;
-    line-height: 1.5;
-    white-space: pre;
-    overflow-x: auto;
+    font-weight: 600;
     color: var(--text);
 }
 
@@ -1071,7 +1069,6 @@ button {
     align-items: center;
     gap: 18px;
     flex-wrap: wrap;
-    margin-top: 8px;
     font-size: 13px;
     color: var(--muted);
 }
@@ -1079,10 +1076,4 @@ button {
 .generation-progress__meta strong {
     color: var(--text);
     font-weight: 600;
-}
-
-@media (max-width: 720px) {
-    .generation-progress__bar {
-        font-size: 12px;
-    }
 }

@@ -188,26 +188,6 @@ const progressSpeed = computed(() => {
     }
     return `${seconds.toFixed(2)}s/it`;
 });
-const progressBarText = computed(() => {
-    const total = progressTotalSteps.value;
-    if (total <= 0) {
-        return "";
-    }
-    const step = progressStep.value;
-    const width = 50;
-    const current = Math.floor((step * width) / total);
-    let bar = "";
-    for (let i = 0; i < width; i++) {
-        if (i > current) {
-            bar += " ";
-        } else if (i === current && i !== width - 1) {
-            bar += ">";
-        } else {
-            bar += "=";
-        }
-    }
-    return `|${bar}| ${step}/${total}`;
-});
 const downloadableSrc = computed(() => {
     const result = currentJob.value?.result;
     if (currentJobKind.value === "vid_gen" && result?.b64_json && videoMimeType.value) {
@@ -1025,14 +1005,6 @@ onBeforeUnmount(() => {
                         <div class="metric__label">已用时间</div>
                         <div class="metric__value">{{ formatElapsed(currentJob?.started, currentJob?.completed) }}</div>
                     </div>
-                    <div v-if="progressTotalSteps > 0" class="metric" title="当前采样进度（已完成步数 / 总步数）">
-                        <div class="metric__label">步数</div>
-                        <div class="metric__value">{{ progressStep }}/{{ progressTotalSteps }}</div>
-                    </div>
-                    <div v-if="progressTotalSteps > 0" class="metric" title="每步采样耗时，数值越小越快">
-                        <div class="metric__label">速度</div>
-                        <div class="metric__value">{{ progressSpeed }}</div>
-                    </div>
                     <div v-if="currentJobKind === 'vid_gen'" class="metric" title="生成视频的帧率">
                         <div class="metric__label">帧率</div>
                         <div class="metric__value">{{ videoFps || "-" }}</div>
@@ -1043,10 +1015,10 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <div v-if="progressTotalSteps > 0" class="generation-progress" title="与后台日志一致的采样进度">
-                    <div class="generation-progress__bar">{{ progressBarText }}</div>
+                <div class="generation-progress" title="当前采样进度和每步耗时">
+                    <div class="generation-progress__title">采样进度</div>
                     <div class="generation-progress__meta">
-                        <span>步数 <strong>{{ progressStep }}/{{ progressTotalSteps }}</strong></span>
+                        <span>步数 <strong>{{ progressTotalSteps > 0 ? `${progressStep}/${progressTotalSteps}` : "-" }}</strong></span>
                         <span>速度 <strong>{{ progressSpeed }}</strong></span>
                         <span v-if="progressPass > 1">第 {{ progressPass }} 轮</span>
                     </div>
