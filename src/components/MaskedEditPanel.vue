@@ -177,10 +177,10 @@ const usesImageTags = computed(() => referenceImages.value.length > 1);
 
 const progressStep = computed(() => {
     const progress = currentJob.value?.progress;
-    if (!progress || progress.total_steps !== samplingTotal.value) {
+    if (!progress || !progress.total || progress.total !== samplingTotal.value) {
         return 0;
     }
-    return Math.min(progress.step, progress.total_steps);
+    return Math.min(progress.completed ?? 0, progress.total);
 });
 const progressTotal = computed(() => samplingTotal.value);
 
@@ -403,9 +403,12 @@ async function pollJob(id: string): Promise<void> {
         currentJob.value = job;
         nowMs.value = Date.now();
         const progress = job.progress;
-        if (progress && progress.total_steps >= samplingTotal.value) {
-            samplingTotal.value = progress.total_steps;
-            samplingSPerIt.value = Number(progress.s_per_it || 0);
+        // Keep the largest schedule: stage reports also cover the VAE pass.
+        if (progress && progress.total && progress.total >= samplingTotal.value) {
+            samplingTotal.value = progress.total;
+            const completed = progress.completed ?? 0;
+            const elapsedSeconds = Number(progress.stage_elapsed_ms ?? 0) / 1000;
+            samplingSPerIt.value = completed > 0 && elapsedSeconds > 0 ? elapsedSeconds / completed : 0;
         }
         if (job.status === "queued" || job.status === "generating") {
             pollTimer = window.setTimeout(() => void pollJob(id), 150);

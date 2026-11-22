@@ -278,10 +278,20 @@ const livePreviewPass = computed(() => currentJob.value?.preview?.pass ?? 1);
 const livePreviewStep = computed(() => currentJob.value?.preview?.step ?? 0);
 const livePreviewTotalSteps = computed(() => currentJob.value?.preview?.total_steps ?? 0);
 
+// Normalises the server progress payload (stage/unit based) and the preview
+// counter into one step/total pair so the UI has a single source to render.
 const progressInfo = computed(() => {
     const progress = currentJob.value?.progress;
-    if (progress && progress.total_steps > 0) {
-        return progress;
+    if (progress && progress.total && progress.total > 0) {
+        const completed = progress.completed ?? 0;
+        const elapsedSeconds = Number(progress.stage_elapsed_ms ?? 0) / 1000;
+        return {
+            pass: progress.pass ?? 1,
+            step: completed,
+            total_steps: progress.total,
+            unit: progress.unit || "",
+            s_per_it: completed > 0 && elapsedSeconds > 0 ? elapsedSeconds / completed : 0,
+        };
     }
     const preview = currentJob.value?.preview;
     if (preview && preview.total_steps > 0) {
@@ -289,6 +299,7 @@ const progressInfo = computed(() => {
             pass: preview.pass,
             step: preview.step,
             total_steps: preview.total_steps,
+            unit: "",
             s_per_it: 0,
         };
     }

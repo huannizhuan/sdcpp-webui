@@ -202,6 +202,21 @@ export interface JobResult {
   frame_count?: number;
 }
 
+/**
+ * Progress reported by the server while a job runs. `completed`/`total` are in
+ * `unit` and may be null before the sampler reports its first step.
+ */
+export interface JobProgress {
+  stage?: string;
+  detail?: string;
+  pass?: number;
+  completed?: number | null;
+  total?: number | null;
+  unit?: string | null;
+  stage_elapsed_ms?: number;
+  elapsed_ms?: number;
+}
+
 export interface Job {
   id: string;
   kind?: JobKind;
@@ -217,12 +232,7 @@ export interface Job {
     total_steps: number;
     b64_json: string;
   } | null;
-  progress?: {
-    pass: number;
-    step: number;
-    total_steps: number;
-    s_per_it: number;
-  } | null;
+  progress?: JobProgress | null;
   error?: {
     code?: string;
     message?: string;
