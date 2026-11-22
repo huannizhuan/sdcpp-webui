@@ -390,6 +390,21 @@ function applyAssistant(payload: { positive: string; negative: string }): void {
     notify("提示词已填入编辑面板，确认无误后点击开始编辑。", "success");
 }
 
+// The server returns the image inline, so the edit result can be saved straight
+// from the data URL without a second request.
+function downloadResult(): void {
+    if (!resultSrc.value) {
+        return;
+    }
+    const format = currentJob.value?.result?.output_format || "png";
+    const link = document.createElement("a");
+    link.href = resultSrc.value;
+    link.download = `${currentJob.value?.id || "edit"}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
 function stopPolling(): void {
     if (pollTimer) {
         window.clearTimeout(pollTimer);
@@ -743,6 +758,11 @@ onBeforeUnmount(() => {
                     <img v-if="resultSrc" :src="resultSrc" alt="编辑结果" />
                     <div v-else class="hint">{{ isRunning ? "正在生成…" : "尚未生成" }}</div>
                 </figure>
+            </div>
+
+            <div class="actions output-controls stack-top">
+                <button class="btn-secondary" type="button" :disabled="!resultSrc" title="下载编辑结果图片" @click="downloadResult">下载结果</button>
+                <span v-if="resultSrc" class="hint">结果已随任务保存到服务器的输出目录，也可在「生成历史」里找到。</span>
             </div>
 
             <div v-if="showProgress" class="generation-progress stack-top">
