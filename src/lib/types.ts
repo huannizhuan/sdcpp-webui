@@ -12,7 +12,6 @@ export interface ImageEntry {
 
 export type ImageTarget =
   | "init_image"
-  | "mask_image"
   | "control_image"
   | "end_image"
   | "ref_images"
@@ -98,7 +97,6 @@ export interface GenerationForm {
   end_image: ImageEntry | null;
   ref_images: ImageEntry[];
   control_frames: ImageEntry[];
-  mask_image: ImageEntry | null;
   control_image: ImageEntry | null;
   lora: FormLoraEntry[];
   vae_tiling_params: VaeTilingParams;
@@ -118,10 +116,50 @@ export interface AvailableLora {
 // Capabilities (API response)
 // ---------------------------------------------------------------------------
 
+export interface InpaintingCapability {
+  // Legacy flag kept for the API contract; the editor no longer uses masks.
+  inpainting?: boolean;
+  // True only for checkpoints that ship a dedicated inpaint UNet.
+  inpainting_native_unet?: boolean;
+  // "masked_denoise" is the model independent latent re-blend, "inpaint_unet"
+  // means the model itself is an inpaint checkpoint.
+  inpainting_kind?: string;
+  // "ref_images" is native instruction-driven editing; "masked_denoise" only
+  // limits where the sampler may change pixels; "none" hides the UI.
+  edit_mode?: string;
+  max_ref_images?: number;
+  supports_alpha?: boolean;
+  supports_circle_edit?: boolean;
+  supports_brush_edit?: boolean;
+}
+
+export interface EditDefaults {
+  steps: number;
+  cfg_scale: number;
+  sample_method: string;
+  width: number;
+  height: number;
+  size_multiple: number;
+  aspect_ratios: Record<string, [number, number]>;
+  turbo_sigmas: number[];
+}
+
 export interface Capabilities {
   model?: {
     stem?: string;
     name?: string;
+    family?: string;
+    version?: string;
+  };
+  capability_matrix?: InpaintingCapability & Record<string, boolean | undefined>;
+  edit_defaults?: EditDefaults;
+  prompt_assistant?: {
+    enabled?: boolean;
+    modes?: string[];
+    quick_mode_available?: boolean;
+    llm_available?: boolean;
+    llm_configured?: boolean;
+    llm_reason?: string;
   };
   current_mode?: "img_gen" | "vid_gen";
   supported_modes?: Array<"img_gen" | "vid_gen">;
@@ -189,6 +227,12 @@ export interface Job {
     code?: string;
     message?: string;
   } | null;
+  // Non-fatal problems reported by the server, for example a mask sent without
+  // a base image.
+  warnings?: string[];
+  // Set while a running job has been asked to stop but the sampler has not
+  // reached a cancellation point yet.
+  cancel_requested?: boolean;
 }
 
 // ---------------------------------------------------------------------------

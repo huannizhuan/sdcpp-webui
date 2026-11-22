@@ -67,7 +67,6 @@ export function createBlankForm(): GenerationForm {
         end_image: null,
         ref_images: [],
         control_frames: [],
-        mask_image: null,
         control_image: null,
         lora: [],
         vae_tiling_params: {

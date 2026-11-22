@@ -45,6 +45,14 @@ export function submitVideoJob(baseUrl: string, body: unknown): Promise<Job> {
     });
 }
 
+export interface JobListResponse {
+    jobs: Job[];
+}
+
+export function listJobs(baseUrl: string): Promise<JobListResponse> {
+    return fetchJson<JobListResponse>(withBase(baseUrl, "/sdcpp/v1/jobs"));
+}
+
 export function getJob(baseUrl: string, id: string): Promise<Job> {
     return fetchJson<Job>(withBase(baseUrl, `/sdcpp/v1/jobs/${id}`));
 }

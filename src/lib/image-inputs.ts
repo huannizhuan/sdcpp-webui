@@ -9,13 +9,6 @@ export const IMAGE_INPUTS: readonly ImageInputConfig[] = [
         layout: "grid",
     },
     {
-        target: "mask_image",
-        label: "蒙版图像",
-        description: "单通道蒙版图像。",
-        tip: "用于局部重绘：白色区域通常保留，黑色区域会被重新生成。请使用与初始图像相同的尺寸。",
-        layout: "grid",
-    },
-    {
         target: "control_image",
         label: "控制图像",
         description: "ControlNet 风格引导图像。",

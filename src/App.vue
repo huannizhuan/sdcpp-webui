@@ -2,10 +2,15 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 
 import CollapsibleSection from "./components/CollapsibleSection.vue";
+import HistoryPanel from "./components/HistoryPanel.vue";
+import MaskedEditPanel from "./components/MaskedEditPanel.vue";
 import ImageDropzone from "./components/ImageDropzone.vue";
+import ImageSlotPicker, { type ImageSlot } from "./components/ImageSlotPicker.vue";
 import InfoTip from "./components/InfoTip.vue";
+import PromptAssistant from "./components/PromptAssistant.vue";
 import StatusChip from "./components/StatusChip.vue";
-import { cancelJob, getCapabilities, getJob, submitImageJob, submitVideoJob } from "./lib/api";
+import { getModelCapabilities, getPromptLlmStatus, type ModelCapabilitiesResponse, type PromptLlmStatus } from "./lib/prompt";
+import { cancelJob, getCapabilities, getJob, listJobs, submitImageJob, submitVideoJob } from "./lib/api";
 import { buildRequestBodyForMode, CACHE_MODES, createBlankForm, formFromCapabilities } from "./lib/form";
 import { IMAGE_INPUTS, VIDEO_IMAGE_INPUTS } from "./lib/image-inputs";
 import { assignImageEntries, clearImageEntries, filesToImageEntries, removeImageEntry } from "./lib/images";
@@ -21,8 +26,114 @@ import type {
 } from "./lib/types";
 
 const baseUrl = createStoredRef<string>("sdcpp-webui-base-url", "", (value: unknown) => String(value || ""));
+// Survives a page reload so the UI can re-attach to a job the server is still
+// running. Cleared once the job reaches a terminal state.
+const activeJobId = createStoredRef<string>("sdcpp-webui-active-job", "", (value: unknown) => String(value || ""));
 const pollIntervalMs = createStoredRef<number>("sdcpp-webui-poll-interval-ms", 100, normalizePollIntervalMs);
-const activeTab = ref<"image" | "video" | "settings">("image");
+const activeTab = ref<"image" | "video" | "edit" | "history" | "slots" | "settings">("image");
+const modelCapabilities = ref<ModelCapabilitiesResponse | null>(null);
+const promptLlmStatus = ref<PromptLlmStatus | null>(null);
+
+const supportsNegativePrompt = computed(() => {
+    const capability = modelCapabilities.value?.capabilities;
+    // Before the capability probe answers, keep the negative prompt visible so
+    // users are never silently blocked from a supported field.
+    return capability ? capability.negative_prompt : true;
+});
+
+const negativePromptReason = computed(() => {
+    if (supportsNegativePrompt.value) {
+        return "";
+    }
+    const notes = modelCapabilities.value?.notes || [];
+    return notes[0] || "当前模型在蒸馏采样下不使用反向提示词。";
+});
+
+// Spatial multiple the backend aligns generation requests to: vae_scale_factor
+// times diffusion_model_down_factor. SDXL/UNet families descend by 8 in the VAE
+// and another 8 in the UNet; the DiT families keep a down factor of 1 or 2.
+// Keeping the request on this grid means the exported mask is never rescaled by
+// the backend, so the painted region stays exactly where the user drew it.
+const modelMultiple = computed(() => {
+    const family = modelCapabilities.value?.model_family || capabilities.value?.model?.family || "";
+    if (family === "qwen_image_2_1" || family === "qwen_image") {
+        return 32;
+    }
+    if (family === "z_image") {
+        return 16;
+    }
+    return 64;
+});
+
+// Editing is only advertised for the Qwen Image family, and only through its
+// native instruction path. The other families have no instruction-driven edit
+// support, so the tab stays disabled instead of offering a degraded result.
+const editTabSupported = computed(() => {
+    const matrix = capabilities.value?.capability_matrix;
+    const capability = modelCapabilities.value?.capabilities;
+    const editMode = matrix?.edit_mode ?? (capability as { edit_mode?: string } | undefined)?.edit_mode;
+    return editMode === "ref_images";
+});
+
+const editTabUnsupportedReason = computed(() => {
+    const family = modelCapabilities.value?.model_family || capabilities.value?.model?.family || "当前模型";
+    return `${family} 不支持指令编辑；仅 Qwen Image 2.1 支持`;
+});
+
+const llmAvailable = computed(() => Boolean(promptLlmStatus.value?.available));
+const llmReason = computed(() => promptLlmStatus.value?.reason || "");
+
+const imageSlots = computed<ImageSlot[]>(() => {
+    const capability = modelCapabilities.value?.capabilities;
+    const family = modelCapabilities.value?.model_family || "";
+    const referenceSupported = Boolean(capability?.reference_image);
+    return [
+        {
+            id: "character_reference",
+            label: "角色参考图",
+            description: "提供角色的外观与身份特征。",
+            supported: referenceSupported,
+            reason: referenceSupported
+                ? ""
+                : `${family || "当前模型"} 不支持参考图条件；仅 Qwen Image 2.1 在加载视觉编码器后可用。`,
+        },
+        {
+            id: "style_reference",
+            label: "风格参考图",
+            description: "提供画风参考。",
+            supported: false,
+            reason: "当前构建没有可用的风格参考编码路径，功能保持禁用。",
+        },
+        {
+            id: "target_image",
+            label: "目标画面",
+            description: "需要被修改的原图（图生图输入）。",
+            supported: Boolean(capability?.img2img),
+            reason: capability?.img2img ? "" : "当前模型不支持图生图。",
+        },
+        {
+            id: "edit_region",
+            label: "编辑区域",
+            description: "指定需要修改的位置。",
+            supported: false,
+            reason: "局部修改请在「图像编辑」页用圈选或画笔标出目标；这里不再单独上传蒙版。",
+        },
+        {
+            id: "pose_reference",
+            label: "姿势参考图",
+            description: "提供人物姿势。",
+            supported: false,
+            reason: "当前构建没有姿势控制模型支持，功能保持禁用。",
+        },
+        {
+            id: "structure_reference",
+            label: "结构参考图",
+            description: "提供边缘、深度等结构信息。",
+            supported: Boolean(capability?.control_net),
+            reason: capability?.control_net ? "" : "未加载 ControlNet 模型，结构参考不可用。",
+        },
+    ];
+});
 const selectedGenerationTab = ref<"image" | "video">("image");
 const generationMode = computed<GenerationMode>(() => selectedGenerationTab.value === "video" ? "video" : "image");
 const lightboxOpen = ref(false);
@@ -51,6 +162,9 @@ const currentJob = ref<Job | null>(null);
 const selectedOutputIndex = ref(0);
 const statusMessage = ref("");
 const statusTone = ref("");
+// Set as soon as the user edits any field, so "刷新服务器信息" knows it must not
+// re-apply the server defaults over their work.
+const formEdited = ref(false);
 const form = reactive<GenerationForm>(createBlankForm());
 
 let pollTimer = 0;
@@ -97,6 +211,10 @@ const supportsPreview = computed(() => Boolean(currentJobFeatures.value.preview)
 const previewModes = computed(() => capabilities.value?.preview_modes || ["none", "proj", "tae", "vae"]);
 
 const currentStatus = computed(() => currentJob.value?.status || "idle");
+const cancelPending = computed(() => Boolean(currentJob.value?.cancel_requested));
+// Set when a poll fails while a job was running: the server may be mid-restart,
+// so the UI keeps the job and retries instead of freezing on "generating".
+const connectionLost = ref(false);
 const STATUS_LABELS: Record<string, string> = {
     idle: "空闲",
     queued: "排队中",
@@ -105,7 +223,15 @@ const STATUS_LABELS: Record<string, string> = {
     failed: "失败",
     cancelled: "已取消",
 };
-const currentStatusLabel = computed(() => STATUS_LABELS[currentStatus.value] || currentStatus.value);
+const currentStatusLabel = computed(() => {
+    if (connectionLost.value) {
+        return "连接中断";
+    }
+    if (cancelPending.value && currentStatus.value === "generating") {
+        return "正在取消";
+    }
+    return STATUS_LABELS[currentStatus.value] || currentStatus.value;
+});
 const currentJobKind = computed(() => currentJob.value?.kind || null);
 const currentImages = computed(() => currentJobKind.value === "img_gen" ? currentJob.value?.result?.images || [] : []);
 const selectedImage = computed(() => {
@@ -197,7 +323,7 @@ const downloadableSrc = computed(() => {
 });
 
 const canCancelCurrentJob = computed(() => {
-    if (!currentJob.value) {
+    if (!currentJob.value || cancelPending.value) {
         return false;
     }
     if (currentStatus.value === "queued") {
@@ -248,7 +374,6 @@ const imageInputsSummary = computed(() => {
     const parts: string[] = [];
     if (form.init_image) parts.push(generationMode.value === "video" ? "起始帧" : "初始图像");
     if (generationMode.value === "image") {
-        if (form.mask_image) parts.push("蒙版");
         if (form.control_image) parts.push("控制图");
         if (form.ref_images.length) parts.push(`${form.ref_images.length} 张参考图`);
     } else {
@@ -325,17 +450,50 @@ function deepAssign(target: Record<string, any>, ...sources: Record<string, any>
 }
 
 function applyForm(nextForm: GenerationForm): void {
+    const wasEdited = formEdited.value;
     deepAssign(form, createBlankForm(), nextForm);
+    // Adopting server defaults is not a user edit; the deep watcher fires async,
+    // so re-assert the previous flag after the assignment settles.
+    if (!wasEdited) {
+        formEdited.value = false;
+        window.setTimeout(() => {
+            formEdited.value = false;
+        }, 0);
+    }
 }
 
-async function refreshCapabilities(): Promise<void> {
+async function refreshModelCapabilities(): Promise<void> {
+    try {
+        modelCapabilities.value = await getModelCapabilities(baseUrl.value);
+    } catch {
+        modelCapabilities.value = null;
+    }
+}
+
+async function refreshPromptLlmStatus(): Promise<void> {
+    try {
+        promptLlmStatus.value = await getPromptLlmStatus(baseUrl.value);
+    } catch {
+        promptLlmStatus.value = null;
+    }
+}
+
+async function refreshCapabilities(options: { resetTaskState?: boolean } = {}): Promise<void> {
+    if (options.resetTaskState) {
+        resetTaskState();
+    }
     loadingCapabilities.value = true;
     capabilitiesError.value = "";
     try {
         const response = await getCapabilities(baseUrl.value);
         capabilities.value = response;
         serviceOnline.value = true;
-        applyForm(formFromCapabilities(response));
+        // The refresh button must not wipe the user's work: only adopt the new
+        // defaults when the form still holds the previous defaults.
+        const nextForm = formFromCapabilities(response);
+        if (!formEdited.value) {
+            applyForm(nextForm);
+        }
         if (selectedGenerationTab.value === "image" && !supportsImageMode.value && supportsVideoMode.value) {
             selectedGenerationTab.value = "video";
         } else if (selectedGenerationTab.value === "video" && !supportsVideoMode.value && supportsImageMode.value) {
@@ -347,7 +505,14 @@ async function refreshCapabilities(): Promise<void> {
             activeTab.value = "image";
         }
         ensureOutputFormatForMode();
+        await Promise.all([refreshModelCapabilities(), refreshPromptLlmStatus()]);
         clearMessage();
+        // The server is authoritative about what is running: re-attach so a job
+        // started before a reload (or before a dropped connection) reappears.
+        const attached = await restoreActiveJob();
+        if (attached) {
+            setMessage("已重新接入服务器上正在运行的任务。", "success");
+        }
     } catch (error) {
         capabilitiesError.value = error instanceof Error ? error.message : String(error);
         serviceOnline.value = false;
@@ -357,8 +522,38 @@ async function refreshCapabilities(): Promise<void> {
     }
 }
 
+function resetTaskState(): void {
+    stopPolling();
+    stopElapsedTimer();
+    currentJob.value = null;
+    selectedOutputIndex.value = 0;
+    activeJobId.value = "";
+    connectionLost.value = false;
+    nowSeconds.value = Date.now() / 1000;
+}
+
 function toggleSection(section: string): void {
     sectionState[section] = !sectionState[section];
+}
+
+function applyAssistantPrompt(payload: { positive: string; negative: string }): void {
+    form.prompt = payload.positive;
+    form.negative_prompt = payload.negative;
+    setMessage("提示词已填入生成表单，确认无误后点击生成。", "success");
+}
+
+function reuseHistoryEntry(payload: { prompt: string; negative: string; seed: number; width: number; height: number }): void {
+    form.prompt = payload.prompt;
+    form.negative_prompt = payload.negative;
+    if (payload.seed >= 0) {
+        form.seed = payload.seed;
+    }
+    if (payload.width > 0 && payload.height > 0) {
+        form.width = payload.width;
+        form.height = payload.height;
+    }
+    activeTab.value = "image";
+    setMessage("已复用历史参数，可直接再次生成。", "success");
 }
 
 function selectGenerationMode(mode: GenerationMode): void {
@@ -397,17 +592,24 @@ function startElapsedTimer(): void {
     }, 100);
 }
 
+function isTerminalStatus(status: string): boolean {
+    return status === "completed" || status === "failed" || status === "cancelled";
+}
+
 async function pollJob(id: string): Promise<void> {
     stopPolling();
     try {
         currentJob.value = await getJob(baseUrl.value, id);
         serviceOnline.value = true;
+        connectionLost.value = false;
         if (currentStatus.value === "queued" || currentStatus.value === "generating") {
+            activeJobId.value = id;
             pollTimer = window.setTimeout(() => pollJob(id), normalizePollIntervalMs(pollIntervalMs.value));
             clearMessage();
             return;
         }
         stopElapsedTimer();
+        activeJobId.value = "";
         if (currentStatus.value === "completed") {
             setMessage(currentJob.value?.kind === "vid_gen" ? "视频生成完成。" : "图像生成完成。", "success");
             return;
@@ -420,9 +622,60 @@ async function pollJob(id: string): Promise<void> {
             setMessage(currentJob.value?.error?.message || "生成失败。", "error");
         }
     } catch (error) {
-        stopElapsedTimer();
+        // A dead connection is not the end of the job: the server keeps sampling
+        // and only the browser lost the socket. Keep the job id, flag the state,
+        // and keep retrying so the UI recovers on its own once the server is back.
         serviceOnline.value = false;
-        setMessage(error instanceof Error ? error.message : String(error), "error");
+        connectionLost.value = true;
+        const message = error instanceof Error ? error.message : String(error);
+        if (/not found|expired|404|410/i.test(message)) {
+            currentJob.value = null;
+            activeJobId.value = "";
+            stopElapsedTimer();
+            setMessage("服务器上找不到该任务，可能已被清理。", "error");
+            return;
+        }
+        setMessage("与服务器的连接中断，正在重试…", "error");
+        pollTimer = window.setTimeout(() => pollJob(id), Math.max(1000, normalizePollIntervalMs(pollIntervalMs.value)));
+    }
+}
+
+// Re-attach to a job after a reload (F5) or a dropped connection. The server is
+// the source of truth: the page only stores the id.
+async function restoreActiveJob(): Promise<boolean> {
+    const storedId = activeJobId.value;
+    if (storedId) {
+        try {
+            const job = await getJob(baseUrl.value, storedId);
+            currentJob.value = job;
+            serviceOnline.value = true;
+            connectionLost.value = false;
+            if (!isTerminalStatus(job.status)) {
+                startElapsedTimer();
+                await pollJob(storedId);
+                return true;
+            }
+            activeJobId.value = "";
+            return false;
+        } catch {
+            activeJobId.value = "";
+        }
+    }
+    try {
+        const { jobs } = await listJobs(baseUrl.value);
+        const running = jobs.find((job) => !isTerminalStatus(job.status));
+        if (!running) {
+            return false;
+        }
+        currentJob.value = running;
+        activeJobId.value = running.id;
+        serviceOnline.value = true;
+        connectionLost.value = false;
+        startElapsedTimer();
+        await pollJob(running.id);
+        return true;
+    } catch {
+        return false;
     }
 }
 
@@ -432,9 +685,11 @@ async function generate(): Promise<void> {
         clearMessage();
         selectedOutputIndex.value = 0;
         startElapsedTimer();
+        connectionLost.value = false;
         currentJob.value = generationMode.value === "video"
             ? await submitVideoJob(baseUrl.value, request)
             : await submitImageJob(baseUrl.value, request);
+        activeJobId.value = currentJob.value.id;
         await pollJob(currentJob.value.id);
     } catch (error) {
         stopElapsedTimer();
@@ -446,11 +701,23 @@ async function cancelCurrentJob(): Promise<void> {
     if (!currentJob.value?.id) {
         return;
     }
+    const id = currentJob.value.id;
     try {
-        currentJob.value = await cancelJob(baseUrl.value, currentJob.value.id);
-        stopPolling();
-        stopElapsedTimer();
-        setMessage("任务已取消。", "error");
+        currentJob.value = await cancelJob(baseUrl.value, id);
+        serviceOnline.value = true;
+        if (isTerminalStatus(currentJob.value.status)) {
+            stopPolling();
+            stopElapsedTimer();
+            activeJobId.value = "";
+            setMessage("任务已取消。", "error");
+            return;
+        }
+        // Still sampling: the server latched the flag and will stop at the next
+        // denoise step. Keep polling so the badge can follow it to "已取消".
+        setMessage("已请求取消，正在等待采样停止…", "error");
+        if (!pollTimer) {
+            await pollJob(id);
+        }
     } catch (error) {
         setMessage(error instanceof Error ? error.message : String(error), "error");
     }
@@ -561,6 +828,10 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
     setMessage("已粘贴图像到初始图像。", "success");
 }
 
+watch(form, () => {
+    formEdited.value = true;
+}, { deep: true });
+
 watch(generationMode, (mode) => {
     ensureOutputFormatForMode(mode);
 });
@@ -575,7 +846,7 @@ watch(videoOutputFormats, () => {
 
 onMounted(() => {
     window.addEventListener("paste", onPaste);
-    refreshCapabilities();
+    void refreshCapabilities();
 });
 
 onBeforeUnmount(() => {
@@ -599,21 +870,33 @@ onBeforeUnmount(() => {
                     <p class="page-description">
                         本地 `stable-diffusion.cpp` 服务器的原生异步图像和视频生成界面。
                     </p>
+                    <div class="model-info">
+                        <StatusChip :label="`模型族 ${modelCapabilities?.model_family || '未知'}`" title="当前加载模型的提示词风格与能力分族" />
+                        <StatusChip :label="`版本 ${modelCapabilities?.model_version || '-'}`" title="服务器识别出的模型版本" />
+                        <StatusChip
+                            :status="llmAvailable ? 'online' : 'offline'"
+                            :label="llmAvailable ? '提示词助手：智能模式可用' : '提示词助手：仅快速模式'"
+                            :title="llmAvailable ? 'Qwen3-VL 可在需要时按需加载' : llmReason || '语言模型不可用，快速模式仍然可用'"
+                        />
+                    </div>
                 </div>
                 <div class="page-header__meta">
                     <StatusChip :status="serviceOnline ? 'online' : 'offline'" :label="serviceOnline ? '服务在线' : '服务离线'" title="服务器连接状态" />
                     <StatusChip :label="`队列上限 ${queueLimit}`" title="服务器允许同时排队的任务数量" />
-                    <StatusChip :status="currentStatus" :label="currentStatusLabel" title="当前任务状态" />
+                    <StatusChip :status="currentStatus" :label="currentStatusLabel" :title="connectionLost ? '与服务器的连接已中断，正在自动重试；任务可能仍在服务器上运行' : '当前任务状态'" />
                 </div>
             </div>
             <div class="page-tabs">
                 <div class="page-tabs__list">
                     <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'image' }" type="button" title="使用扩散模型生成静态图像" @click="selectGenerationMode('image')" :disabled="!supportsImageMode">图像生成</button>
                     <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'video' }" type="button" title="使用视频模型生成视频序列" @click="selectGenerationMode('video')" :disabled="!supportsVideoMode">视频生成</button>
+                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'edit' }" type="button" :disabled="!editTabSupported" :title="editTabSupported ? '给参考图并用一句话描述要做的修改，或圈选、涂抹局部区域后重绘' : editTabUnsupportedReason" @click="activeTab = 'edit'">图像编辑</button>
+                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'history' }" type="button" title="查看输出目录中的历史生成结果，并复用其提示词与参数" @click="activeTab = 'history'">生成历史</button>
+                    <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'slots' }" type="button" title="按用途命名的图片上传槽位；当前模型不支持的能力保持禁用" @click="activeTab = 'slots'">图片槽位</button>
                     <button class="page-tab" :class="{ 'page-tab--active': activeTab === 'settings' }" type="button" title="配置服务器连接、输出格式和轮询间隔" @click="activeTab = 'settings'">设置</button>
                 </div>
                 <div class="page-tabs__actions">
-                    <button class="btn-secondary" type="button" title="重新读取服务器能力、模型信息和可用选项" @click="refreshCapabilities" :disabled="loadingCapabilities">{{ loadingCapabilities ? "刷新中..." : "刷新服务器信息" }}</button>
+                    <button class="btn-secondary" type="button" title="重新读取服务器能力、模型信息和可用选项" @click="refreshCapabilities({ resetTaskState: true })" :disabled="loadingCapabilities">{{ loadingCapabilities ? "刷新中..." : "刷新服务器信息" }}</button>
                 </div>
             </div>
             <div v-if="activeTab === 'settings'" class="settings">
@@ -649,7 +932,32 @@ onBeforeUnmount(() => {
             </div>
         </header>
 
-        <div v-if="activeTab !== 'settings'" class="layout">
+        <div v-if="activeTab === 'history'" class="layout layout--single">
+            <HistoryPanel ref="historyPanel" :base-url="baseUrl" @reuse="reuseHistoryEntry" />
+        </div>
+
+        <MaskedEditPanel
+            v-else-if="activeTab === 'edit'"
+            :base-url="baseUrl"
+            :model-family="modelCapabilities?.model_family || capabilities?.model?.family || ''"
+            :model-multiple="modelMultiple"
+            :edit-defaults="capabilities?.edit_defaults || null"
+            :max-ref-images="capabilities?.capability_matrix?.max_ref_images ?? 10"
+            :supports-alpha="Boolean(capabilities?.capability_matrix?.supports_alpha)"
+            :defaults="form"
+            :supports-negative-prompt="supportsNegativePrompt"
+            :negative-prompt-reason="negativePromptReason"
+            :llm-available="llmAvailable"
+            :llm-reason="llmReason"
+            :available-loras="availableLoras"
+            :initial-loras="form.lora"
+            @notify="setMessage($event.message, $event.tone)"
+        />
+        <div v-else-if="activeTab === 'slots'" class="layout layout--single">
+            <ImageSlotPicker :slots="imageSlots" @pick="() => setMessage('该槽位尚未接入推理路径，暂不可用。', 'error')" />
+        </div>
+
+        <div v-else-if="activeTab !== 'settings'" class="layout">
             <section class="panel control-panel">
                 <div class="panel-header">
                     <div>
@@ -657,15 +965,28 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <div class="prompt-card">
+                <PromptAssistant
+                    v-if="activeTab !== 'video'"
+                    class="stack-top"
+                    :base-url="baseUrl"
+                    :model-family="modelCapabilities?.model_family || ''"
+                    :supports-negative-prompt="supportsNegativePrompt"
+                    :negative-prompt-reason="negativePromptReason"
+                    :llm-available="llmAvailable"
+                    :llm-reason="llmReason"
+                    @apply="applyAssistantPrompt"
+                />
+
+                <div class="prompt-card stack-top">
                     <div class="field--full">
                         <label>提示词<InfoTip text="描述想要生成的画面、主体、风格、构图和细节。支持中英文；提示词越具体，结果通常越可控。" /></label>
                         <textarea v-model="form.prompt" :placeholder="generationMode === 'video' ? '描述您想要生成的动作、场景和构图' : '描述您想要生成的图像'" />
                     </div>
-                    <div class="field--full stack-top">
+                    <div v-if="supportsNegativePrompt" class="field--full stack-top">
                         <label>反向提示词<InfoTip text="不希望出现在结果中的内容，例如模糊、低质量、多余肢体、文字水印等。" /></label>
                         <textarea v-model="form.negative_prompt" placeholder="不想要的内容?" />
                     </div>
+                    <div v-else class="hint stack-top">{{ negativePromptReason }}</div>
                 </div>
 
                 <div class="fields stack-top">
@@ -811,7 +1132,7 @@ onBeforeUnmount(() => {
                     <div><button class="btn-ghost" type="button" title="添加一个新的 LoRA 配置项" @click="addLora" :disabled="!availableLoras.length">添加 LoRA</button></div>
                 </CollapsibleSection>
 
-                <CollapsibleSection class="stack-top" eyebrow="图像输入" tip="设置初始图、蒙版、控制图、参考图或视频控制帧，用于图生图、局部重绘和条件生成。" :summary="imageInputsSummary" :open="sectionState.auxiliaryImages" @toggle="toggleSection('auxiliaryImages')">
+                <CollapsibleSection class="stack-top" eyebrow="图像输入" tip="设置初始图、控制图、参考图或视频控制帧，用于图生图、局部重绘和条件生成。" :summary="imageInputsSummary" :open="sectionState.auxiliaryImages" @toggle="toggleSection('auxiliaryImages')">
                     <div class="upload-grid">
                         <ImageDropzone
                             v-for="input in gridImageInputs"
@@ -1033,7 +1354,7 @@ onBeforeUnmount(() => {
                     </button>
                     <div class="actions output-controls__secondary">
                         <button class="btn-secondary" type="button" :disabled="!downloadableSrc" title="下载当前生成结果" @click="downloadSelected">下载</button>
-                        <button class="btn-danger" type="button" :disabled="!canCancelCurrentJob" title="取消排队中的任务；正在生成的任务可能无法中断" @click="cancelCurrentJob">取消</button>
+                        <button class="btn-danger" type="button" :disabled="!canCancelCurrentJob" :title="cancelPending ? '已请求取消，等待采样停止…' : '取消排队中或正在生成的任务'" @click="cancelCurrentJob">{{ cancelPending ? "取消中…" : "取消" }}</button>
                     </div>
                 </div>
 

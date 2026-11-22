@@ -145,7 +145,6 @@ export function buildImageRequestBody(form: GenerationForm) {
         control_strength: parseNumber(form.control_strength, 0.9),
         init_image: form.init_image ? form.init_image.dataUrl : null,
         ref_images: form.ref_images.map((item) => item.dataUrl),
-        mask_image: form.mask_image ? form.mask_image.dataUrl : null,
         control_image: form.control_image ? form.control_image.dataUrl : null,
     };
 }
